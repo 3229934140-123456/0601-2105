@@ -124,6 +124,7 @@
       completedAt: '2026-06-06 19:30',
       checkinStep: 3,
       receiptStatus: 'confirmed',
+      receiptConfirmedAt: '2026-06-07 10:00',
       settlement: {
         basePrice: 3200,
         urgentFee: 0,
@@ -134,11 +135,45 @@
         otherCost: 0,
         totalCost: 1050,
         totalDeduct: 0,
-        totalSubsidy: 0,
-        netIncome: 2150
+        totalSubsidy: 200,
+        netIncome: 2350
       }
     }
   ];
+
+  var defaultExpenses = [
+    { id: 'E001', taskId: 'T20260605008', type: 'fuel', typeName: '油费', amount: 450, remark: '北仑服务区中石化', time: '2026-06-06 09:30' },
+    { id: 'E002', taskId: 'T20260605008', type: 'fuel', typeName: '油费', amount: 230, remark: '杭州湾环线加油站', time: '2026-06-06 15:20' },
+    { id: 'E003', taskId: 'T20260605008', type: 'toll', typeName: '过路费', amount: 320, remark: '宁波北-上海江桥', time: '2026-06-06 19:00' },
+    { id: 'E004', taskId: 'T20260605008', type: 'parking', typeName: '停车费', amount: 50, remark: '宝山物流园过夜', time: '2026-06-06 20:15' }
+  ];
+
+  var defaultExceptions = {
+    'T20260605008': [
+      {
+        id: 'X001',
+        taskId: 'T20260605008',
+        type: 'traffic',
+        typeName: '交通拥堵',
+        desc: 'G15沈海高速嘉兴段遇交通事故堵车2小时',
+        deduct: 0,
+        subsidy: 200,
+        status: 'resolved',
+        handler: '李调度',
+        handleNote: '情况属实，考虑到拥堵严重影响时效，给予200元时效补贴',
+        handleTime: '2026-06-06 21:00',
+        time: '2026-06-06 14:30'
+      }
+    ]
+  };
+
+  var defaultPhotos = {};
+  var SAMPLE_SIGN_IMG = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIj48cmVjdCBmaWxsPSIjZmZmIiB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LWZhbWlseT0ic2VyaWYiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5OTkiPuepu+WItuWbvueJh+WKoOW3peihjOeJiCjwn5mC4piV6L+H8J+OikK3d3dy5pbnNwYWNlLmNvbS90cmFuc3BvcnQ8L3RleHQ+PC9zdmc+';
+  var SAMPLE_WEIGHT_IMG = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIj48cmVjdCBmaWxsPSIjZmZmIiB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LWZhbWlseT0ibW9ub3NwYWNlIiBmb250LXNpemU9IjEyIiBmaWxsPSIjMzMzIj7mnKzmloflj5/liqYg54q26YePMC44dOaVsOKAljEwLjg0VE/KuWbvvIzkuK3mnKzpo47pm4bovazmnaXlj6/ku6XorqHnq5sKMjAyNi0wNi0wNiAwODoxMjo0NQo8L3RleHQ+PC9zdmc+';
+  defaultPhotos['T20260605008'] = {
+    sign: { dataUrl: SAMPLE_SIGN_IMG, time: '2026-06-06 19:30' },
+    weight: { dataUrl: SAMPLE_WEIGHT_IMG, time: '2026-06-06 08:15' }
+  };
 
   var defaultMessages = [
     {
@@ -358,10 +393,10 @@
 
   function init() {
     appState.tasks = loadData(STORAGE_KEYS.TASKS, defaultTasks);
-    appState.expenses = loadData(STORAGE_KEYS.EXPENSES, []);
+    appState.expenses = loadData(STORAGE_KEYS.EXPENSES, defaultExpenses);
     appState.checkins = loadData(STORAGE_KEYS.CHECKINS, []);
-    appState.photos = loadData(STORAGE_KEYS.PHOTOS, {});
-    appState.exceptions = loadData(STORAGE_KEYS.EXCEPTIONS, {});
+    appState.photos = loadData(STORAGE_KEYS.PHOTOS, defaultPhotos);
+    appState.exceptions = loadData(STORAGE_KEYS.EXCEPTIONS, defaultExceptions);
     appState.messages = loadData(STORAGE_KEYS.MESSAGES, defaultMessages);
     appState.currentTaskId = localStorage.getItem(STORAGE_KEYS.CURRENT_TASK);
 
@@ -749,6 +784,30 @@
       }
     }
 
+    var receiptDetailHtml = '';
+    if (task.status === 'completed') {
+      var statusLabel = task.receiptStatus === 'confirmed' ?
+        '<span class="task-receipt-status confirmed">已确认</span>' :
+        '<span class="task-receipt-status pending">待确认</span>';
+      receiptDetailHtml = '<div class="detail-section">' +
+        '<div class="detail-section-title">电子回单</div>' +
+        '<div class="receipt-sign-card">' +
+        '<div class="receipt-sign-title">📄 签收信息 ' + statusLabel + '</div>' +
+        '<div class="receipt-row"><span class="receipt-label">任务单号</span><span class="receipt-value">' + task.id + '</span></div>' +
+        '<div class="receipt-row"><span class="receipt-label">签收时间</span><span class="receipt-value">' + (task.completedAt || '--') + '</span></div>' +
+        '<div class="receipt-row"><span class="receipt-label">签收人</span><span class="receipt-value">收货方</span></div>' +
+        (task.receiptConfirmedAt ? '<div class="receipt-row"><span class="receipt-label">司机确认时间</span><span class="receipt-value">' + task.receiptConfirmedAt + '</span></div>' : '') +
+        '<div style="font-size:13px;color:#1f2329;font-weight:600;margin-top:10px">司机上传凭证</div>' +
+        renderReceiptPhotos(taskId) +
+        (task.receiptStatus === 'pending' ?
+          '<div style="margin-top:12px"><button class="btn btn-primary btn-block" onclick="event.stopPropagation();window.confirmReceipt(\'' + task.id + '\')">确认电子回单</button></div>' : '') +
+        '</div></div>';
+    }
+
+    var exceptionHtml = renderExceptionCards(taskId);
+    var expenseGroupHtml = task.status === 'completed' ? renderExpenseGroupDetail(taskId) : '';
+    var timelineHtml = renderTimeline(taskId);
+
     body.innerHTML =
       '<div class="detail-section">' +
       '<div class="detail-section-title">运输路线</div>' +
@@ -775,11 +834,16 @@
       '<div class="detail-section">' +
       '<div class="detail-section-title">费用信息</div>' +
       '<div class="detail-row"><span class="detail-label">基础运费</span><span class="detail-value" style="color:#f53f3f;font-weight:700;font-size:16px">¥' + task.price.toLocaleString() + '</span></div>' +
-      (task.urgent ? '<div class="detail-row"><span class="detail-label">加急费(8%)</span><span class="detail-value" style="color:#f53f3f">¥' + Math.round(task.price * 0.08).toLocaleString() + '</span></div>' : '') +
+      (task.urgent ? '<div class="detail-row"><span class="detail-label">加急费(运费×8%)</span><span class="detail-value" style="color:#00b42a;font-weight:600">+¥' + Math.round(task.price * 0.08).toLocaleString() + '</span></div>' : '') +
       receiptStatusHtml +
       (task.completedAt ? '<div class="detail-row"><span class="detail-label">完成时间</span><span class="detail-value">' + task.completedAt + '</span></div>' : '') +
       (task.acceptedAt ? '<div class="detail-row"><span class="detail-label">接单时间</span><span class="detail-value">' + task.acceptedAt + '</span></div>' : '') +
-      '</div>';
+      '</div>' +
+
+      receiptDetailHtml +
+      exceptionHtml +
+      expenseGroupHtml +
+      timelineHtml;
 
     if (task.status === 'pending') {
       footer.innerHTML =
@@ -815,20 +879,31 @@
     if (!task) return;
 
     task.receiptStatus = 'confirmed';
+    task.receiptConfirmedAt = formatTime(new Date());
     saveData(STORAGE_KEYS.TASKS, appState.tasks);
 
-    var msg = appState.messages.find(function (m) { return m.taskId === taskId && m.type === 'receipt'; });
-    if (msg && msg.receipt) {
-      msg.receipt.status = '已确认';
-      saveData(STORAGE_KEYS.MESSAGES, appState.messages);
-    } else {
+    var confirmTime = formatTime(new Date());
+    var hasReceiptMsg = false;
+    appState.messages.forEach(function (m) {
+      if (m.taskId === taskId && m.type === 'receipt') {
+        hasReceiptMsg = true;
+        m.title = '电子回单已确认';
+        m.content = '任务' + taskId + '电子回单您已确认签收，确认时间：' + confirmTime;
+        if (m.receipt) {
+          m.receipt.status = '已确认';
+          m.receipt.confirmTime = confirmTime;
+        }
+      }
+    });
+
+    if (!hasReceiptMsg) {
       appState.messages.unshift({
         id: 'M' + Date.now(),
         type: 'receipt',
         typeName: '回单',
         title: '电子回单已确认',
-        content: '任务' + taskId + '电子回单您已确认签收。',
-        time: formatTime(new Date()),
+        content: '任务' + taskId + '电子回单您已确认签收，确认时间：' + confirmTime,
+        time: confirmTime,
         read: false,
         taskId: taskId,
         receipt: {
@@ -837,13 +912,14 @@
           endAddr: task.endAddr,
           cargoName: task.cargoName,
           cargoWeight: task.cargoWeight,
-          signTime: formatTime(new Date()),
+          signTime: task.completedAt || confirmTime,
           signer: '司机本人',
+          confirmTime: confirmTime,
           status: '已确认'
         }
       });
-      saveData(STORAGE_KEYS.MESSAGES, appState.messages);
     }
+    saveData(STORAGE_KEYS.MESSAGES, appState.messages);
 
     document.getElementById('taskDetailModal').classList.remove('active');
     showToast('电子回单已确认');
@@ -920,12 +996,19 @@
 
     var settlementCard = '';
     if (task.status === 'completed') {
+      var urgentHtml = task.urgent ?
+        '<div class="settlement-row"><span>加急费(运费×8%)</span><span style="color:#00b42a">+¥' + s.urgentFee.toLocaleString() + '</span></div>' : '';
       settlementCard =
         '<div class="settlement-card">' +
         '<div class="settlement-title">📋 本趟结算摘要</div>' +
-        '<div class="settlement-row"><span>任务单号</span><span>' + task.id + '</span></div>' +
+        '<div class="settlement-row"><span>任务单号</span><span>' + task.id + (task.urgent ? ' <span class="badge urgent">加急</span>' : '') + '</span></div>' +
         '<div class="settlement-row"><span>运输路线</span><span>' + task.startAddr.substring(0, 10) + '→' + task.endAddr.substring(0, 10) + '</span></div>' +
         '<div class="settlement-row"><span>完成时间</span><span>' + (task.completedAt || '--') + '</span></div>' +
+        '<div class="settlement-row"><span>基础运费</span><span>¥' + s.basePrice.toLocaleString() + '</span></div>' +
+        urgentHtml +
+        '<div class="settlement-row"><span>成本支出</span><span style="color:#f53f3f">-¥' + s.totalCost.toLocaleString() + '</span></div>' +
+        (s.totalDeduct > 0 ? '<div class="settlement-row"><span>异常扣款</span><span style="color:#f53f3f">-¥' + s.totalDeduct.toLocaleString() + '</span></div>' : '') +
+        (s.totalSubsidy > 0 ? '<div class="settlement-row"><span>调度补贴</span><span style="color:#00b42a">+¥' + s.totalSubsidy.toLocaleString() + '</span></div>' : '') +
         '<div class="settlement-row total"><span>净收入</span><span style="color:#00b42a;font-weight:700;font-size:18px">¥' + s.netIncome.toLocaleString() + '</span></div>' +
         '</div>';
     }
@@ -952,13 +1035,13 @@
 
       ((s.totalDeduct > 0 || s.totalSubsidy > 0) ?
         '<div class="detail-section">' +
-        '<div class="detail-section-title">异常调整</div>' +
+        '<div class="detail-section-title">异常调整 <span class="settlement-trace-link" onclick="document.getElementById(\'closeIncomeModal\').click();window.viewTask(\'' + taskId + '\')">查看来源 →</span></div>' +
         (s.totalDeduct > 0 ? '<div class="income-item"><span class="income-label"><span class="exception-tag deduct">扣款</span>异常扣款</span><span class="income-value" style="color:#f53f3f">-¥' + s.totalDeduct.toLocaleString() + '</span></div>' : '') +
         (s.totalSubsidy > 0 ? '<div class="income-item"><span class="income-label"><span class="exception-tag subsidy">补贴</span>调度补贴</span><span class="income-value" style="color:#00b42a">+¥' + s.totalSubsidy.toLocaleString() + '</span></div>' : '') +
         '</div>' : '') +
 
       '<div class="income-total">' +
-      '<span class="income-total-label">预估净收入</span>' +
+      '<span class="income-total-label">' + (task.status === 'completed' ? '本趟净收入' : '预估净收入') + '</span>' +
       '<span class="income-total-value">¥' + s.netIncome.toLocaleString() + '</span>' +
       '</div>';
 
@@ -1288,6 +1371,7 @@
     var subsidy = parseFloat(subsidyEl.value) || 0;
 
     var typeNames = { traffic: '交通拥堵', weather: '恶劣天气', vehicle: '车辆故障', cargo: '货物异常', other: '其他' };
+    var submitTime = formatTime(new Date());
 
     var exc = {
       id: 'X' + Date.now(),
@@ -1297,7 +1381,11 @@
       desc: descEl.value,
       deduct: deduct,
       subsidy: subsidy,
-      time: formatTime(new Date())
+      status: 'pending',
+      handler: null,
+      handleNote: null,
+      handleTime: null,
+      time: submitTime
     };
     addTaskException(currentTask.id, exc);
 
@@ -1305,12 +1393,39 @@
       id: 'M' + Date.now(),
       type: 'dispatch',
       typeName: '调度',
-      title: '异常上报-' + typeNames[typeEl.value],
-      content: descEl.value + (deduct > 0 ? '（扣款¥' + deduct + '）' : '') + (subsidy > 0 ? '（补贴¥' + subsidy + '）' : ''),
-      time: formatTime(new Date()),
+      title: '异常上报-' + typeNames[typeEl.value] + '（待处理）',
+      content: descEl.value + (deduct > 0 ? '（申请扣款¥' + deduct + '）' : '') + (subsidy > 0 ? '（申请补贴¥' + subsidy + '）' : '') + '，已提交调度处理。',
+      time: submitTime,
       read: false
     });
     saveData(STORAGE_KEYS.MESSAGES, appState.messages);
+
+    setTimeout(function () {
+      exc.status = 'resolved';
+      exc.handler = '刘调度';
+      if (subsidy > 0) {
+        exc.handleNote = '情况核实，同意补贴¥' + subsidy + '，将计入本趟结算。';
+      } else if (deduct > 0) {
+        exc.handleNote = '情况核实，扣款¥' + deduct + '，已在结算中扣除。';
+      } else {
+        exc.handleNote = '情况已记录，注意行车安全。';
+      }
+      exc.handleTime = formatTime(new Date());
+      saveData(STORAGE_KEYS.EXCEPTIONS, appState.exceptions);
+
+      appState.messages.unshift({
+        id: 'M' + Date.now(),
+        type: 'dispatch',
+        typeName: '调度',
+        title: '异常处理完成-' + exc.typeName,
+        content: exc.handleNote + '（处理人：' + exc.handler + '）',
+        time: exc.handleTime,
+        read: false
+      });
+      saveData(STORAGE_KEYS.MESSAGES, appState.messages);
+      renderMessages();
+      updateMsgBadge();
+    }, 5000);
 
     typeEl.value = '';
     descEl.value = '';
@@ -1355,6 +1470,213 @@
     }).join('');
   }
 
+  window.previewReceiptPhoto = function (taskId, type) {
+    var photo = getPhoto(taskId, type);
+    if (!photo) return;
+    openPhotoPreview(type, PHOTO_TYPES[type] ? PHOTO_TYPES[type].label : '签收凭证', photo.dataUrl);
+  };
+
+  function renderReceiptPhotos(taskId) {
+    var photos = appState.photos[taskId] || {};
+    var types = Object.keys(photos);
+    if (types.length === 0) return '<div style="font-size:12px;color:#86909c;margin-top:6px">暂无上传凭证</div>';
+
+    var html = '<div class="receipt-photos">';
+    types.forEach(function (type) {
+      var p = photos[type];
+      var label = PHOTO_TYPES[type] ? PHOTO_TYPES[type].label : type;
+      html += '<div class="receipt-photo-item" onclick="window.previewReceiptPhoto(\'' + taskId + '\',\'' + type + '\')">' +
+        '<img src="' + p.dataUrl + '" alt="' + label + '" />' +
+        '<div class="photo-type-tag">' + label + '</div>' +
+        '</div>';
+    });
+    html += '</div>';
+    return html;
+  }
+
+  function renderExceptionCards(taskId) {
+    var list = getTaskExceptions(taskId);
+    if (list.length === 0) return '';
+
+    var html = '<div class="detail-section">' +
+      '<div class="detail-section-title">异常记录</div>';
+
+    list.forEach(function (exc) {
+      var statusLabel = exc.status === 'resolved' ? '已处理' : '待处理';
+      var statusCls = exc.status === 'resolved' ? 'resolved' : 'pending';
+      var resultHtml = '';
+      if (exc.status === 'resolved') {
+        resultHtml = '<div class="exception-result">' +
+          '<div class="exception-result-row"><span>处理人</span><span>' + exc.handler + '</span></div>' +
+          '<div class="exception-result-row"><span>处理时间</span><span>' + exc.handleTime + '</span></div>' +
+          '<div class="exception-result-row"><span>处理说明</span><span style="color:#4e5969;text-align:right;max-width:60%">"' + exc.handleNote + '"</span></div>' +
+          (exc.deduct > 0 ? '<div class="exception-result-row" style="color:#f53f3f;font-weight:600"><span>扣款金额</span><span>-¥' + exc.deduct.toLocaleString() + '</span></div>' : '') +
+          (exc.subsidy > 0 ? '<div class="exception-result-row" style="color:#00b42a;font-weight:600"><span>补贴金额</span><span>+¥' + exc.subsidy.toLocaleString() + '</span></div>' : '') +
+          '</div>';
+      }
+      html += '<div class="exception-card">' +
+        '<div class="exception-card-header">' +
+        '<span class="exception-type">' + exc.typeName + '</span>' +
+        '<span class="exception-status ' + statusCls + '">' + statusLabel + '</span>' +
+        '</div>' +
+        '<div class="exception-desc">' + exc.desc + '</div>' +
+        '<div class="exception-meta">' +
+        '<span>上报时间：' + exc.time + '</span>' +
+        ((exc.deduct > 0 || exc.subsidy > 0) ?
+          '<span>' + (exc.deduct > 0 ? '<span style="color:#f53f3f">扣款¥' + exc.deduct + '</span>' : '') +
+          (exc.subsidy > 0 ? '<span style="color:#00b42a"> 补贴¥' + exc.subsidy + '</span>' : '') + '</span>' : '') +
+        '</div>' +
+        resultHtml +
+        '</div>';
+    });
+
+    html += '</div>';
+    return html;
+  }
+
+  function renderExpenseGroupDetail(taskId) {
+    var taskExpenses = appState.expenses.filter(function (e) { return e.taskId === taskId; });
+    if (taskExpenses.length === 0) return '';
+
+    var groups = [
+      { key: 'fuel', label: '⛽ 油费', type: 'cost' },
+      { key: 'toll', label: '🛣️ 过路费', type: 'cost' },
+      { key: 'parking', label: '🅿️ 停车费', type: 'cost' },
+      { key: 'other', label: '💰 其他费用', type: 'cost' }
+    ];
+
+    var html = '<div class="detail-section">' +
+      '<div class="detail-section-title">费用明细（按类型分组）</div>';
+
+    var totalCost = 0;
+    groups.forEach(function (g) {
+      var items = taskExpenses.filter(function (e) { return e.type === g.key; });
+      if (items.length === 0) return;
+      var sum = items.reduce(function (s, e) { return s + e.amount; }, 0);
+      totalCost += sum;
+
+      html += '<div class="expense-group">' +
+        '<div class="expense-group-title"><span>' + g.label + '（' + items.length + '笔）</span>' +
+        '<span class="group-amount">-¥' + sum.toLocaleString() + '</span></div>' +
+        '<div class="expense-group-list">';
+      items.forEach(function (e) {
+        html += '<div class="expense-group-item">' +
+          '<div><div>' + (e.remark || e.typeName) + '</div><div class="item-time">' + e.time + '</div></div>' +
+          '<div style="color:#f53f3f">-¥' + e.amount.toLocaleString() + '</div>' +
+          '</div>';
+      });
+      html += '</div></div>';
+    });
+
+    var excs = getTaskExceptions(taskId);
+    var totalDeduct = excs.reduce(function (s, e) { return s + (e.deduct || 0); }, 0);
+    var totalSubsidy = excs.reduce(function (s, e) { return s + (e.subsidy || 0); }, 0);
+
+    if (totalDeduct > 0 || totalSubsidy > 0) {
+      html += '<div class="expense-group"><div class="expense-group-title">' +
+        '<span>⚠️ 异常调整</span><span>';
+      if (totalSubsidy > 0) html += '<span class="group-amount positive">+¥' + totalSubsidy.toLocaleString() + '</span>';
+      if (totalDeduct > 0) html += '<span class="group-amount"> -¥' + totalDeduct.toLocaleString() + '</span>';
+      html += '</span></div><div class="expense-group-list">';
+      excs.forEach(function (e) {
+        if (e.deduct === 0 && e.subsidy === 0) return;
+        var amtHtml = '';
+        if (e.subsidy > 0) amtHtml += '<span style="color:#00b42a">+¥' + e.subsidy + '</span>';
+        if (e.deduct > 0) amtHtml += '<span style="color:#f53f3f"> -¥' + e.deduct + '</span>';
+        html += '<div class="expense-group-item">' +
+          '<div><div>' + e.typeName + ' <span style="color:#86909c">(' + (e.status === 'resolved' ? '已处理' : '待处理') + ')</span></div>' +
+          '<div class="item-time">' + e.time + ' · ' + (e.handleNote || e.desc) + '</div></div>' +
+          '<div>' + amtHtml + '</div>' +
+          '</div>';
+      });
+      html += '</div></div>';
+    }
+
+    var task = appState.tasks.find(function (t) { return t.id === taskId; });
+    if (task && task.urgent) {
+      var uFee = Math.round(task.price * 0.08);
+      html += '<div class="expense-group"><div class="expense-group-title">' +
+        '<span>🚀 加急费（运费×8%）</span><span class="group-amount positive">+¥' + uFee.toLocaleString() + '</span>' +
+        '</div></div>';
+    }
+
+    html += '</div>';
+    return html;
+  }
+
+  function buildTimeline(taskId) {
+    var task = appState.tasks.find(function (t) { return t.id === taskId; });
+    if (!task) return [];
+    var items = [];
+
+    if (task.createdAt) {
+      items.push({ sort: task.createdAt, icon: '📋', title: '任务下发', time: task.createdAt, desc: '调度派发运输任务，运费¥' + task.price.toLocaleString() + (task.urgent ? '（加急）' : '') });
+    }
+    if (task.acceptedAt) {
+      items.push({ sort: task.acceptedAt, icon: '✅', title: '司机接单', time: task.acceptedAt, desc: '您已确认接单，请按时到达装货地' });
+    }
+
+    var taskCheckins = appState.checkins.filter(function (c) { return c.taskId === taskId; });
+    var stepIcons = ['🏭', '☕', '🏢'];
+    var stepNames = ['装货打卡完成', '休息打卡完成', '卸货打卡完成'];
+    taskCheckins.forEach(function (c) {
+      var idx = c.step - 1;
+      items.push({ sort: c.time, icon: stepIcons[idx] || '📍', title: stepNames[idx] || c.name, time: c.time, desc: '打卡位置：' + c.location });
+    });
+
+    var taskPhotos = appState.photos[taskId] || {};
+    Object.keys(taskPhotos).forEach(function (type) {
+      var p = taskPhotos[type];
+      var label = PHOTO_TYPES[type] ? PHOTO_TYPES[type].label : type;
+      items.push({ sort: p.time, icon: '📷', title: '上传' + label + '凭证', time: p.time, desc: label + '照片已上传，可预览' });
+    });
+
+    var taskExpenses = appState.expenses.filter(function (e) { return e.taskId === taskId; });
+    taskExpenses.forEach(function (e) {
+      items.push({ sort: e.time, icon: '💳', title: '登记' + e.typeName, time: e.time, desc: '支出 ¥' + e.amount.toLocaleString() + (e.remark ? '（' + e.remark + '）' : '') });
+    });
+
+    var taskExcs = getTaskExceptions(taskId);
+    taskExcs.forEach(function (e) {
+      items.push({ sort: e.time, icon: '⚠️', title: '上报' + e.typeName, time: e.time, desc: e.desc + (e.status === 'resolved' ? '（已处理）' : '（待处理）') });
+      if (e.status === 'resolved' && e.handleTime) {
+        items.push({ sort: e.handleTime, icon: '👨‍💼', title: '调度处理完成', time: e.handleTime, desc: e.handleNote });
+      }
+    });
+
+    if (task.completedAt) {
+      items.push({ sort: task.completedAt, icon: '🎯', title: '任务完成', time: task.completedAt, desc: '运输任务已完成，进入结算流程' });
+    }
+    if (task.receiptStatus === 'confirmed' && task.receiptConfirmedAt) {
+      items.push({ sort: task.receiptConfirmedAt, icon: '📄', title: '回单已确认', time: task.receiptConfirmedAt, desc: '电子回单已签收确认' });
+    }
+
+    items.sort(function (a, b) { return a.sort < b.sort ? -1 : 1; });
+    return items;
+  }
+
+  function renderTimeline(taskId) {
+    var items = buildTimeline(taskId);
+    if (items.length === 0) return '';
+
+    var html = '<div class="task-timeline">' +
+      '<div class="task-timeline-title">⏱️ 任务时间线</div>';
+    items.forEach(function (it, idx) {
+      var isLast = idx === items.length - 1;
+      var dotCls = isLast ? 'active' : 'done';
+      html += '<div class="tl-item">' +
+        '<div class="tl-dot ' + dotCls + '">' + it.icon + '</div>' +
+        (!isLast ? '<div class="tl-line"></div>' : '') +
+        '<div class="tl-content">' +
+        '<div class="tl-title">' + it.title + '</div>' +
+        '<div class="tl-time">' + it.time + '</div>' +
+        '<div class="tl-desc">' + it.desc + '</div>' +
+        '</div></div>';
+    });
+    html += '</div>';
+    return html;
+  }
+
   function renderMessages() {
     var listEl = document.getElementById('msgList');
     var filter = appState.msgFilter;
@@ -1373,16 +1695,25 @@
 
     listEl.innerHTML = list.map(function (m) {
       var receiptHtml = '';
-      var confirmBtnHtml = '';
       if (m.receipt) {
         var isPending = m.receipt.status === '待确认';
-        receiptHtml = '<div class="receipt-preview">' +
+        var statusTag = isPending ?
+          '<span class="task-receipt-status pending" style="margin-left:6px">待确认</span>' :
+          '<span class="task-receipt-status confirmed" style="margin-left:6px">已确认</span>';
+
+        var photoHtml = m.taskId ? renderReceiptPhotos(m.taskId) : '';
+
+        receiptHtml = '<div class="receipt-sign-card">' +
+          '<div class="receipt-sign-title">📄 签收信息' + statusTag + '</div>' +
           '<div class="receipt-row"><span class="receipt-label">任务单号</span><span class="receipt-value">' + m.receipt.taskNo + '</span></div>' +
           '<div class="receipt-row"><span class="receipt-label">货物信息</span><span class="receipt-value">' + m.receipt.cargoName + ' / ' + m.receipt.cargoWeight + '</span></div>' +
           '<div class="receipt-row"><span class="receipt-label">签收时间</span><span class="receipt-value">' + m.receipt.signTime + '</span></div>' +
-          '<div class="receipt-row"><span class="receipt-label">签收人</span><span class="receipt-value">' + m.receipt.signer + '（' + m.receipt.status + '）</span></div>' +
+          '<div class="receipt-row"><span class="receipt-label">签收人</span><span class="receipt-value">' + m.receipt.signer + '</span></div>' +
+          (m.receipt.confirmTime ? '<div class="receipt-row"><span class="receipt-label">确认时间</span><span class="receipt-value">' + m.receipt.confirmTime + '</span></div>' : '') +
+          '<div style="font-size:13px;color:#1f2329;font-weight:600;margin-top:10px">司机上传凭证</div>' +
+          photoHtml +
           (isPending && m.taskId ?
-            '<div style="margin-top:12px"><button class="btn btn-primary btn-block btn-sm" onclick="event.stopPropagation();window.confirmReceipt(\'' + m.taskId + '\')">确认电子回单</button></div>' : '') +
+            '<div style="margin-top:12px"><button class="btn btn-primary btn-block" onclick="event.stopPropagation();window.confirmReceipt(\'' + m.taskId + '\')">确认电子回单</button></div>' : '') +
           '</div>';
       }
 

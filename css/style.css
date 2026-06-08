@@ -1809,6 +1809,272 @@ select.form-input {
   opacity: 0.85;
 }
 
+.receipt-sign-card {
+  background: linear-gradient(135deg, #f0f9ff 0%, #e6f4ff 100%);
+  border: 1px solid #91caff;
+  border-radius: 10px;
+  padding: 14px;
+  margin-top: 12px;
+}
+
+.receipt-sign-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #165dff;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.receipt-photos {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.receipt-photo-item {
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #e5e6eb;
+  position: relative;
+}
+
+.receipt-photo-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  cursor: pointer;
+}
+
+.receipt-photo-item .photo-type-tag {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  font-size: 10px;
+  padding: 2px 4px;
+  text-align: center;
+}
+
+.exception-card {
+  background: #fff;
+  border: 1px solid #e5e6eb;
+  border-radius: 10px;
+  padding: 12px;
+  margin-top: 10px;
+}
+
+.exception-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.exception-type {
+  font-weight: 600;
+  color: #1f2329;
+}
+
+.exception-status {
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.exception-status.pending {
+  background: #fff7e8;
+  color: #ff7d00;
+}
+
+.exception-status.resolved {
+  background: #e8ffea;
+  color: #00b42a;
+}
+
+.exception-desc {
+  color: #4e5969;
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.exception-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #86909c;
+}
+
+.exception-result {
+  background: #f7f8fa;
+  border-radius: 8px;
+  padding: 10px;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.exception-result-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.exception-result-row:last-child {
+  margin-bottom: 0;
+}
+
+.expense-group {
+  margin-top: 12px;
+}
+
+.expense-group-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #f7f8fa;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2329;
+  margin-bottom: 6px;
+}
+
+.expense-group-title .group-amount {
+  color: #f53f3f;
+}
+
+.expense-group-title .group-amount.positive {
+  color: #00b42a;
+}
+
+.expense-group-list {
+  padding-left: 8px;
+  border-left: 2px solid #e5e6eb;
+  margin-left: 8px;
+}
+
+.expense-group-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  font-size: 13px;
+  color: #4e5969;
+  border-bottom: 1px dashed #f2f3f5;
+}
+
+.expense-group-item:last-child {
+  border-bottom: none;
+}
+
+.expense-group-item .item-time {
+  font-size: 11px;
+  color: #86909c;
+}
+
+.task-timeline {
+  margin-top: 16px;
+  padding-left: 4px;
+}
+
+.task-timeline-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2329;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tl-item {
+  display: flex;
+  position: relative;
+  padding-bottom: 16px;
+  padding-left: 28px;
+}
+
+.tl-item:last-child {
+  padding-bottom: 0;
+}
+
+.tl-dot {
+  position: absolute;
+  left: 0;
+  top: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #e5e6eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: #fff;
+  flex-shrink: 0;
+  z-index: 1;
+}
+
+.tl-dot.done {
+  background: #00b42a;
+}
+
+.tl-dot.active {
+  background: #1677ff;
+  box-shadow: 0 0 0 4px rgba(22, 119, 255, 0.15);
+}
+
+.tl-line {
+  position: absolute;
+  left: 9px;
+  top: 22px;
+  bottom: 0;
+  width: 2px;
+  background: #e5e6eb;
+}
+
+.tl-item:last-child .tl-line {
+  display: none;
+}
+
+.tl-content {
+  flex: 1;
+}
+
+.tl-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2329;
+  margin-bottom: 2px;
+}
+
+.tl-time {
+  font-size: 11px;
+  color: #86909c;
+  margin-bottom: 3px;
+}
+
+.tl-desc {
+  font-size: 12px;
+  color: #4e5969;
+  line-height: 1.4;
+}
+
+.settlement-trace-link {
+  color: #1677ff;
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
 @media (max-width: 360px) {
   .summary-value {
     font-size: 20px;

@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#1677ff" />
+<title>运途司机端</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="app-container">
+    <!-- 顶部状态栏 -->
+    <header class="app-header" id="appHeader">
+      <div class="header-left" id="headerLeft">
+        <button class="icon-btn" id="backBtn" style="display:none;">
+          <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6 1.41-1.41z"/></svg>
+        </button>
+      </div>
+      <div class="header-title" id="headerTitle">运输任务</div>
+      <div class="header-right">
+        <div class="driver-info">
+          <span class="driver-avatar">张</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- 主内容区域 -->
+    <main class="app-main" id="appMain">
+      <!-- 任务页签 -->
+      <section class="tab-page active" id="page-task">
+        <div class="task-tabs">
+          <button class="task-tab active" data-status="pending">待接单 <span class="badge">2</span></button>
+          <button class="task-tab" data-status="accepted">进行中 <span class="badge">1</span></button>
+          <button class="task-tab" data-status="completed">已完成</button>
+        </div>
+        <div class="task-list" id="taskList"></div>
+      </section>
+
+      <!-- 导航页签 -->
+      <section class="tab-page" id="page-nav">
+        <div class="nav-empty" id="navEmpty">
+          <div class="empty-icon">🗺️</div>
+          <div class="empty-text">暂无进行中的任务</div>
+          <div class="empty-sub">请先在任务页接受运输任务</div>
+        </div>
+        <div class="nav-container" id="navContainer" style="display:none;">
+          <div class="route-map">
+            <div class="map-placeholder">
+              <div class="route-line">
+                <div class="route-point start">
+                  <div class="point-dot"></div>
+                  <div class="point-info">
+                    <div class="point-label">装货点</div>
+                    <div class="point-addr" id="navStartAddr">--</div>
+                  </div>
+                </div>
+                <div class="route-path">
+                  <div class="path-line"></div>
+                  <div class="path-stats">
+                    <span id="navDistance">--</span>
+                    <span>·</span>
+                    <span id="navDuration">--</span>
+                  </div>
+                </div>
+                <div class="route-point end">
+                  <div class="point-dot"></div>
+                  <div class="point-info">
+                    <div class="point-label">卸货点</div>
+                    <div class="point-addr" id="navEndAddr">--</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="nav-controls">
+            <button class="btn btn-primary btn-block" id="startNavBtn">
+              <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M21.71 11.29l-9-9a.996.996 0 00-1.41 0l-9 9a.996.996 0 000 1.41l9 9c.39.39 1.02.39 1.41 0l9-9a.996.996 0 000-1.41zM14 14.5V12h-4v3H8v-4a1 1 0 011-1h5V7.5l3.5 3.5-3.5 3.5z"/></svg>
+              开始导航
+            </button>
+          </div>
+          <div class="nav-tips">
+            <div class="tip-item">
+              <span class="tip-icon">⚠️</span>
+              <div>
+                <div class="tip-title">注意限高</div>
+                <div class="tip-desc">前方3公里处有限高4.5米，请确认车辆高度</div>
+              </div>
+            </div>
+            <div class="tip-item">
+              <span class="tip-icon">⛽</span>
+              <div>
+                <div class="tip-title">加油站提示</div>
+                <div class="tip-desc">前方5公里有服务区，可加油休息</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 打卡页签 -->
+      <section class="tab-page" id="page-checkin">
+        <div class="checkin-empty" id="checkinEmpty">
+          <div class="empty-icon">📍</div>
+          <div class="empty-text">暂无进行中的任务</div>
+          <div class="empty-sub">接受任务后可在此打卡</div>
+        </div>
+        <div class="checkin-container" id="checkinContainer" style="display:none;">
+          <div class="checkin-progress">
+            <div class="progress-step active">
+              <div class="step-dot">1</div>
+              <div class="step-label">装货打卡</div>
+            </div>
+            <div class="progress-line" id="line1"></div>
+            <div class="progress-step" id="step2">
+              <div class="step-dot">2</div>
+              <div class="step-label">在途休息</div>
+            </div>
+            <div class="progress-line" id="line2"></div>
+            <div class="progress-step" id="step3">
+              <div class="step-dot">3</div>
+              <div class="step-label">卸货打卡</div>
+            </div>
+          </div>
+
+          <div class="checkin-actions">
+            <button class="btn btn-primary btn-block btn-lg" id="checkinBtn">
+              <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 010-5 2.5 2.5 0 010 5z"/></svg>
+              <span id="checkinBtnText">到达装货点打卡</span>
+            </button>
+            <div class="location-info" id="locationInfo">
+              <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 010-5 2.5 2.5 0 010 5z"/></svg>
+              <span id="locationText">正在获取定位...</span>
+            </div>
+          </div>
+
+          <div class="checkin-photos">
+            <div class="section-title">上传凭证照片</div>
+            <div class="photo-grid">
+              <div class="photo-item" data-type="weight">
+                <div class="photo-icon">⚖️</div>
+                <div class="photo-label">磅单</div>
+                <input type="file" accept="image/*" capture="environment" class="photo-input" id="photoWeight" />
+                <div class="photo-preview" id="previewWeight"></div>
+              </div>
+              <div class="photo-item" data-type="seal">
+                <div class="photo-icon">🔒</div>
+                <div class="photo-label">封签</div>
+                <input type="file" accept="image/*" capture="environment" class="photo-input" id="photoSeal" />
+                <div class="photo-preview" id="previewSeal"></div>
+              </div>
+              <div class="photo-item" data-type="damage">
+                <div class="photo-icon">📦</div>
+                <div class="photo-label">货损</div>
+                <input type="file" accept="image/*" capture="environment" class="photo-input" id="photoDamage" />
+                <div class="photo-preview" id="previewDamage"></div>
+              </div>
+              <div class="photo-item" data-type="sign">
+                <div class="photo-icon">✍️</div>
+                <div class="photo-label">签收</div>
+                <input type="file" accept="image/*" capture="environment" class="photo-input" id="photoSign" />
+                <div class="photo-preview" id="previewSign"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="checkin-history" id="checkinHistory">
+            <div class="section-title">打卡记录</div>
+            <div class="history-list" id="historyList"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 费用页签 -->
+      <section class="tab-page" id="page-expense">
+        <div class="expense-summary">
+          <div class="summary-item">
+            <div class="summary-value" id="totalExpense">¥0</div>
+            <div class="summary-label">费用合计</div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-value" id="expenseCount">0</div>
+            <div class="summary-label">登记笔数</div>
+          </div>
+        </div>
+
+        <div class="expense-form card">
+          <div class="section-title">登记费用</div>
+          <div class="form-group">
+            <label>费用类型</label>
+            <div class="type-selector">
+              <button class="type-btn active" data-type="fuel">⛽ 油费</button>
+              <button class="type-btn" data-type="toll">🛣️ 过路费</button>
+              <button class="type-btn" data-type="parking">🅿️ 停车费</button>
+              <button class="type-btn" data-type="other">💰 其他</button>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label>金额 (元)</label>
+              <input type="number" class="form-input" id="expenseAmount" placeholder="请输入金额" />
+            </div>
+            <div class="form-group flex-1">
+              <label>日期时间</label>
+              <input type="datetime-local" class="form-input" id="expenseTime" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>备注说明</label>
+            <textarea class="form-input" id="expenseRemark" rows="2" placeholder="选填，如加油站名称、高速路段等"></textarea>
+          </div>
+          <button class="btn btn-primary btn-block" id="addExpenseBtn">提交登记</button>
+        </div>
+
+        <div class="expense-form card">
+          <div class="section-title">异常说明</div>
+          <div class="form-group">
+            <label>异常类型</label>
+            <select class="form-input" id="exceptionType">
+              <option value="">请选择异常类型</option>
+              <option value="traffic">交通拥堵</option>
+              <option value="weather">恶劣天气</option>
+              <option value="vehicle">车辆故障</option>
+              <option value="cargo">货物异常</option>
+              <option value="other">其他</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>异常描述</label>
+            <textarea class="form-input" id="exceptionDesc" rows="3" placeholder="请详细描述异常情况..."></textarea>
+          </div>
+          <button class="btn btn-outline btn-block" id="submitExceptionBtn">提交异常</button>
+        </div>
+
+        <div class="expense-list card">
+          <div class="section-title">费用明细</div>
+          <div class="expense-items" id="expenseList">
+            <div class="empty-state">暂无费用记录</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 消息页签 -->
+      <section class="tab-page" id="page-message">
+        <div class="msg-tabs">
+          <button class="msg-tab active" data-type="all">全部</button>
+          <button class="msg-tab" data-type="dispatch">调度</button>
+          <button class="msg-tab" data-type="safety">安全</button>
+          <button class="msg-tab" data-type="receipt">回单</button>
+        </div>
+        <div class="msg-list" id="msgList"></div>
+      </section>
+    </main>
+
+    <!-- 任务详情弹窗 -->
+    <div class="modal" id="taskDetailModal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <div class="modal-title">任务详情</div>
+          <button class="icon-btn" id="closeDetailModal">
+            <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+          </button>
+        </div>
+        <div class="modal-body" id="taskDetailBody"></div>
+        <div class="modal-footer" id="taskDetailFooter"></div>
+      </div>
+    </div>
+
+    <!-- 收入估算弹窗 -->
+    <div class="modal" id="incomeModal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <div class="modal-title">本趟收入估算</div>
+          <button class="icon-btn" id="closeIncomeModal">
+            <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+          </button>
+        </div>
+        <div class="modal-body" id="incomeBody"></div>
+        <div class="modal-footer">
+          <button class="btn btn-primary btn-block" id="confirmCompleteBtn">确认任务完成</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 底部导航栏 -->
+    <nav class="bottom-nav">
+      <button class="nav-item active" data-page="task">
+        <div class="nav-icon">
+          <svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm4 18H6V4h7v5h5v11z"/></svg>
+        </div>
+        <div class="nav-label">任务</div>
+      </button>
+      <button class="nav-item" data-page="nav">
+        <div class="nav-icon">
+          <svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M21.71 11.29l-9-9a.996.996 0 00-1.41 0l-9 9a.996.996 0 000 1.41l9 9c.39.39 1.02.39 1.41 0l9-9a.996.996 0 000-1.41zM14 14.5V12h-4v3H8v-4a1 1 0 011-1h5V7.5l3.5 3.5-3.5 3.5z"/></svg>
+        </div>
+        <div class="nav-label">导航</div>
+      </button>
+      <button class="nav-item" data-page="checkin">
+        <div class="nav-icon">
+          <svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+        </div>
+        <div class="nav-label">打卡</div>
+      </button>
+      <button class="nav-item" data-page="expense">
+        <div class="nav-icon">
+          <svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg>
+        </div>
+        <div class="nav-label">费用</div>
+      </button>
+      <button class="nav-item" data-page="message">
+        <div class="nav-icon">
+          <svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+          <span class="msg-badge">5</span>
+        </div>
+        <div class="nav-label">消息</div>
+      </button>
+    </nav>
+
+    <!-- Toast提示 -->
+    <div class="toast" id="toast"></div>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

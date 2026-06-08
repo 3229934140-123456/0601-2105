@@ -2,11 +2,26 @@
   'use strict';
 
   var STORAGE_KEYS = {
-    TASKS: 'yt_driver_tasks',
-    EXPENSES: 'yt_driver_expenses',
-    CHECKINS: 'yt_driver_checkins',
-    CURRENT_TASK: 'yt_driver_current_task',
-    MESSAGES: 'yt_driver_messages'
+    TASKS: 'yt_driver_tasks_v2',
+    EXPENSES: 'yt_driver_expenses_v2',
+    CHECKINS: 'yt_driver_checkins_v2',
+    PHOTOS: 'yt_driver_photos_v2',
+    EXCEPTIONS: 'yt_driver_exceptions_v2',
+    CURRENT_TASK: 'yt_driver_current_task_v2',
+    MESSAGES: 'yt_driver_messages_v2'
+  };
+
+  var STEP_META = [
+    { name: '装货打卡', icon: '🏭', timeLabel: 'startTime', planLabel: '装货计划时间' },
+    { name: '在途休息打卡', icon: '☕', timeLabel: 'startTime', planLabel: '预计休息时间' },
+    { name: '卸货打卡', icon: '🏢', timeLabel: 'endTime', planLabel: '卸货计划时间' }
+  ];
+
+  var PHOTO_TYPES = {
+    weight: { label: '磅单', icon: '⚖️' },
+    seal: { label: '封签', icon: '🔒' },
+    damage: { label: '货损', icon: '📦' },
+    sign: { label: '签收', icon: '✍️' }
   };
 
   var defaultTasks = [
@@ -31,7 +46,9 @@
         { name: '刘调度', role: '调度员', phone: '13700137003' }
       ],
       urgent: false,
-      createdAt: '2026-06-09 08:30'
+      createdAt: '2026-06-09 08:30',
+      checkinStep: 0,
+      receiptStatus: 'none'
     },
     {
       id: 'T20260609002',
@@ -53,7 +70,9 @@
         { name: '赵主管', role: '收货人', phone: '13911139111' }
       ],
       urgent: true,
-      createdAt: '2026-06-09 09:15'
+      createdAt: '2026-06-09 09:15',
+      checkinStep: 0,
+      receiptStatus: 'none'
     },
     {
       id: 'T20260608005',
@@ -78,7 +97,8 @@
       urgent: false,
       createdAt: '2026-06-08 16:20',
       acceptedAt: '2026-06-08 16:35',
-      checkinStep: 1
+      checkinStep: 1,
+      receiptStatus: 'none'
     },
     {
       id: 'T20260605008',
@@ -102,7 +122,21 @@
       createdAt: '2026-06-05 10:00',
       acceptedAt: '2026-06-05 10:20',
       completedAt: '2026-06-06 19:30',
-      income: 3200
+      checkinStep: 3,
+      receiptStatus: 'confirmed',
+      settlement: {
+        basePrice: 3200,
+        urgentFee: 0,
+        totalIncome: 3200,
+        fuelCost: 680,
+        tollCost: 320,
+        parkingCost: 50,
+        otherCost: 0,
+        totalCost: 1050,
+        totalDeduct: 0,
+        totalSubsidy: 0,
+        netIncome: 2150
+      }
     }
   ];
 
@@ -142,6 +176,7 @@
       content: '您的任务T20260605008电子回单已签收确认。',
       time: '2026-06-07 10:00',
       read: true,
+      taskId: 'T20260605008',
       receipt: {
         taskNo: 'T20260605008',
         startAddr: '宁波市北仑区新碶街道',
@@ -173,7 +208,7 @@
       localStorage.setItem(key, JSON.stringify(defaults));
       return defaults;
     }
-    return [];
+    return {};
   }
 
   function saveData(key, data) {
@@ -223,22 +258,119 @@
     tasks: [],
     expenses: [],
     checkins: [],
+    photos: {},
+    exceptions: {},
     messages: [],
     currentTaskId: null,
-    checkinStep: 0
+    previewPhotoType: null
   };
+
+  function getAcceptedTasks() {
+    return appState.tasks.filter(function (t) { return t.status === 'accepted'; });
+  }
+
+  function getCurrentTask() {
+    var tid = appState.currentTaskId;
+    if (!tid) return null;
+    var task = appState.tasks.find(function (t) { return t.id === tid && t.status === 'accepted'; });
+    if (!task) {
+      var accepted = getAcceptedTasks();
+      if (accepted.length > 0) {
+        appState.currentTaskId = accepted[0].id;
+        saveData(STORAGE_KEYS.CURRENT_TASK, accepted[0].id);
+        return accepted[0];
+      }
+      appState.currentTaskId = null;
+      return null;
+    }
+    return task;
+  }
+
+  function setCurrentTask(taskId) {
+    appState.currentTaskId = taskId;
+    saveData(STORAGE_KEYS.CURRENT_TASK, taskId);
+    refreshAllByTask();
+  }
+
+  function savePhoto(taskId, type, dataUrl) {
+    if (!appState.photos[taskId]) appState.photos[taskId] = {};
+    appState.photos[taskId][type] = { dataUrl: dataUrl, time: formatTime(new Date()) };
+    saveData(STORAGE_KEYS.PHOTOS, appState.photos);
+  }
+
+  function getPhoto(taskId, type) {
+    if (!appState.photos[taskId]) return null;
+    return appState.photos[taskId][type] || null;
+  }
+
+  function removePhoto(taskId, type) {
+    if (appState.photos[taskId]) {
+      delete appState.photos[taskId][type];
+      saveData(STORAGE_KEYS.PHOTOS, appState.photos);
+    }
+  }
+
+  function getTaskExceptions(taskId) {
+    return appState.exceptions[taskId] || [];
+  }
+
+  function addTaskException(taskId, exc) {
+    if (!appState.exceptions[taskId]) appState.exceptions[taskId] = [];
+    appState.exceptions[taskId].push(exc);
+    saveData(STORAGE_KEYS.EXCEPTIONS, appState.exceptions);
+  }
+
+  function calculateSettlement(taskId) {
+    var task = appState.tasks.find(function (t) { return t.id === taskId; });
+    if (!task) return null;
+
+    var basePrice = task.price;
+    var urgentFee = task.urgent ? Math.round(task.price * 0.08) : 0;
+    var totalIncome = basePrice + urgentFee;
+
+    var taskExpenses = appState.expenses.filter(function (e) { return e.taskId === taskId; });
+    var fuelCost = taskExpenses.filter(function (e) { return e.type === 'fuel'; }).reduce(function (s, e) { return s + e.amount; }, 0);
+    var tollCost = taskExpenses.filter(function (e) { return e.type === 'toll'; }).reduce(function (s, e) { return s + e.amount; }, 0);
+    var parkingCost = taskExpenses.filter(function (e) { return e.type === 'parking'; }).reduce(function (s, e) { return s + e.amount; }, 0);
+    var otherCost = taskExpenses.filter(function (e) { return e.type === 'other'; }).reduce(function (s, e) { return s + e.amount; }, 0);
+    var totalCost = fuelCost + tollCost + parkingCost + otherCost;
+
+    var taskExcs = getTaskExceptions(taskId);
+    var totalDeduct = taskExcs.reduce(function (s, e) { return s + (e.deduct || 0); }, 0);
+    var totalSubsidy = taskExcs.reduce(function (s, e) { return s + (e.subsidy || 0); }, 0);
+
+    var netIncome = totalIncome - totalCost - totalDeduct + totalSubsidy;
+
+    return {
+      basePrice: basePrice,
+      urgentFee: urgentFee,
+      totalIncome: totalIncome,
+      fuelCost: fuelCost,
+      tollCost: tollCost,
+      parkingCost: parkingCost,
+      otherCost: otherCost,
+      totalCost: totalCost,
+      totalDeduct: totalDeduct,
+      totalSubsidy: totalSubsidy,
+      netIncome: netIncome > 0 ? netIncome : 0
+    };
+  }
 
   function init() {
     appState.tasks = loadData(STORAGE_KEYS.TASKS, defaultTasks);
     appState.expenses = loadData(STORAGE_KEYS.EXPENSES, []);
     appState.checkins = loadData(STORAGE_KEYS.CHECKINS, []);
+    appState.photos = loadData(STORAGE_KEYS.PHOTOS, {});
+    appState.exceptions = loadData(STORAGE_KEYS.EXCEPTIONS, {});
     appState.messages = loadData(STORAGE_KEYS.MESSAGES, defaultMessages);
     appState.currentTaskId = localStorage.getItem(STORAGE_KEYS.CURRENT_TASK);
 
-    var accepted = appState.tasks.find(function (t) { return t.status === 'accepted'; });
-    if (accepted) {
-      appState.currentTaskId = accepted.id;
-      appState.checkinStep = accepted.checkinStep || 0;
+    if (!appState.currentTaskId || !appState.tasks.find(function (t) { return t.id === appState.currentTaskId && t.status === 'accepted'; })) {
+      var accepted = getAcceptedTasks();
+      if (accepted.length > 0) {
+        appState.currentTaskId = accepted[0].id;
+        saveData(STORAGE_KEYS.CURRENT_TASK, accepted[0].id);
+      }
     }
 
     bindTabNavigation();
@@ -247,6 +379,7 @@
     renderExpenses();
     renderCheckinStatus();
     renderNavPage();
+    renderTaskSwitchers();
     bindTaskTabs();
     bindMsgTabs();
     bindExpenseTypeButtons();
@@ -254,6 +387,7 @@
     bindExpenseForm();
     bindPhotoUpload();
     bindCheckin();
+    bindPhotoPreview();
     updateMsgBadge();
   }
 
@@ -327,6 +461,18 @@
     document.getElementById('closeIncomeModal').addEventListener('click', function () {
       document.getElementById('incomeModal').classList.remove('active');
     });
+    document.getElementById('closePhotoModal').addEventListener('click', function () {
+      document.getElementById('photoPreviewModal').classList.remove('active');
+    });
+    document.getElementById('replacePhotoBtn').addEventListener('click', function () {
+      var type = appState.previewPhotoType;
+      document.getElementById('photoPreviewModal').classList.remove('active');
+      if (type) {
+        var inputId = 'photo' + type.charAt(0).toUpperCase() + type.slice(1);
+        var input = document.getElementById(inputId);
+        if (input) input.click();
+      }
+    });
     document.getElementById('confirmCompleteBtn').addEventListener('click', function () {
       completeTask();
     });
@@ -334,6 +480,7 @@
     document.getElementById('backBtn').addEventListener('click', function () {
       document.getElementById('taskDetailModal').classList.remove('active');
       document.getElementById('incomeModal').classList.remove('active');
+      document.getElementById('photoPreviewModal').classList.remove('active');
     });
   }
 
@@ -345,26 +492,59 @@
   }
 
   function bindPhotoUpload() {
-    var inputs = document.querySelectorAll('.photo-input');
-    inputs.forEach(function (input) {
+    var photoItems = document.querySelectorAll('.photo-item');
+    photoItems.forEach(function (item) {
+      var type = item.getAttribute('data-type');
+      var input = item.querySelector('.photo-input');
+      var preview = item.querySelector('.photo-preview');
+      var replaceBtn = item.querySelector('.photo-replace');
+
       input.addEventListener('change', function (e) {
         var file = e.target.files[0];
         if (!file) return;
         var reader = new FileReader();
         reader.onload = function (ev) {
-          var type = input.getAttribute('id').replace('photo', '');
-          type = type.charAt(0).toLowerCase() + type.slice(1);
-          var item = input.closest('.photo-item');
-          var preview = document.getElementById('preview' + type.charAt(0).toUpperCase() + type.slice(1));
+          var task = getCurrentTask();
+          var dataUrl = ev.target.result;
+
           if (preview) {
-            preview.innerHTML = '<img src="' + ev.target.result + '" alt="preview" />';
+            preview.innerHTML = '<img src="' + dataUrl + '" alt="preview" onclick="window.previewPhoto(\'' + type + '\')" />';
           }
-          if (item) item.classList.add('has-photo');
-          showToast('照片上传成功');
+          item.classList.add('has-photo');
+
+          if (task) {
+            savePhoto(task.id, type, dataUrl);
+          }
+
+          showToast(PHOTO_TYPES[type].label + '照片上传成功');
         };
         reader.readAsDataURL(file);
       });
+
+      if (replaceBtn) {
+        replaceBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          input.click();
+        });
+      }
     });
+  }
+
+  function bindPhotoPreview() {
+    window.previewPhoto = function (type) {
+      var task = getCurrentTask();
+      if (!task) return;
+      var photo = getPhoto(task.id, type);
+      if (!photo) return;
+      openPhotoPreview(type, PHOTO_TYPES[type].label, photo.dataUrl);
+    };
+  }
+
+  function openPhotoPreview(type, label, dataUrl) {
+    appState.previewPhotoType = type;
+    document.getElementById('photoPreviewTitle').textContent = label + '预览';
+    document.getElementById('photoPreviewImg').src = dataUrl;
+    document.getElementById('photoPreviewModal').classList.add('active');
   }
 
   function bindCheckin() {
@@ -380,8 +560,70 @@
       '无锡市新吴区附近'
     ];
     setTimeout(function () {
-      document.getElementById('locationText').textContent = locations[Math.floor(Math.random() * locations.length)];
+      var loc = locations[Math.floor(Math.random() * locations.length)];
+      var locText = document.getElementById('locationText');
+      var stepLoc = document.getElementById('stepCurLocation');
+      if (locText) locText.textContent = loc;
+      if (stepLoc) stepLoc.textContent = loc;
     }, 800);
+  }
+
+  function renderTaskSwitchers() {
+    var accepted = getAcceptedTasks();
+    var switchers = ['navTaskSwitcher', 'checkinTaskSwitcher', 'expenseTaskSwitcher'];
+
+    if (accepted.length === 0) {
+      switchers.forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+      });
+      return;
+    }
+
+    var currentTask = getCurrentTask();
+
+    if (accepted.length === 1) {
+      switchers.forEach(function (id) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.style.display = 'block';
+        el.innerHTML = '<div class="task-current-badge"><span class="badge-dot"></span>当前任务：' + currentTask.id + ' · ' + currentTask.startAddr.substring(0, 8) + '→' + currentTask.endAddr.substring(0, 8) + '</div>';
+      });
+    } else {
+      switchers.forEach(function (id) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.style.display = 'block';
+        var optionsHtml = accepted.map(function (t) {
+          return '<option value="' + t.id + '" ' + (t.id === (currentTask && currentTask.id) ? 'selected' : '') + '>' +
+            t.id + ' · ' + t.startAddr.substring(0, 8) + '→' + t.endAddr.substring(0, 8) +
+            '</option>';
+        }).join('');
+        el.innerHTML = '<select class="task-switcher-select" onchange="window.setCurrentTask(this.value)">' +
+          '<option value="">-- 选择当前任务 --</option>' +
+          optionsHtml +
+          '</select>';
+      });
+    }
+
+    var expenseLabel = document.getElementById('expenseTaskLabel');
+    if (expenseLabel) {
+      if (currentTask) {
+        expenseLabel.textContent = '（归属：' + currentTask.id + '）';
+      } else {
+        expenseLabel.textContent = '';
+      }
+    }
+  }
+
+  window.setCurrentTask = setCurrentTask;
+
+  function refreshAllByTask() {
+    renderTaskSwitchers();
+    renderNavPage();
+    renderCheckinStatus();
+    renderExpenses();
+    renderTaskList();
   }
 
   function renderTaskList() {
@@ -394,10 +636,15 @@
       return;
     }
 
+    var currentTask = getCurrentTask();
+    var currentId = currentTask ? currentTask.id : null;
+
     var html = '';
     filtered.forEach(function (task) {
       var statusInfo = statusMap[task.status];
       var urgentHtml = task.urgent ? '<span class="badge urgent">加急</span>' : '';
+      var isCurrent = task.id === currentId;
+      var cardClass = 'task-card' + (isCurrent ? ' task-card-current' : '');
       var footerHtml = '';
 
       if (task.status === 'pending') {
@@ -408,13 +655,23 @@
       } else if (task.status === 'accepted') {
         footerHtml = '<div class="task-footer">' +
           '<div class="task-price">¥' + task.price.toLocaleString() + ' <small>进行中</small></div>' +
-          '<button class="btn btn-outline" onclick="window.viewTask(\'' + task.id + '\')">任务详情</button>' +
+          '<div style="display:flex;gap:8px">' +
+          (isCurrent ? '<span class="badge" style="background:#1677ff;color:#fff">当前任务</span>' :
+            '<button class="btn btn-outline btn-sm" onclick="event.stopPropagation();window.setCurrentTask(\'' + task.id + '\')">设为当前</button>') +
+          '<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();window.viewTask(\'' + task.id + '\')">详情</button>' +
+          '</div>' +
           '</div>';
       } else {
+        var receiptLabel = '';
+        if (task.receiptStatus === 'confirmed') {
+          receiptLabel = '<span class="task-receipt-status confirmed">回单已确认</span>';
+        } else if (task.receiptStatus === 'pending') {
+          receiptLabel = '<span class="task-receipt-status pending">回单待确认</span>';
+        }
         footerHtml = '<div class="task-footer">' +
           '<div class="price-detail">' +
-          '<div class="task-price">¥' + (task.income || task.price).toLocaleString() + '</div>' +
-          '<div class="price-note">已结算</div>' +
+          '<div class="task-price">¥' + (task.settlement ? task.settlement.netIncome : task.price).toLocaleString() + '</div>' +
+          '<div class="price-note">净收入' + receiptLabel + '</div>' +
           '</div>' +
           '<button class="btn btn-outline" onclick="window.viewTask(\'' + task.id + '\')">查看详情</button>' +
           '</div>';
@@ -424,7 +681,7 @@
         return '<span class="goods-tag">' + r + '</span>';
       }).join('');
 
-      html += '<div class="task-card" onclick="window.viewTask(\'' + task.id + '\')">' +
+      html += '<div class="' + cardClass + '" onclick="window.viewTask(\'' + task.id + '\')">' +
         '<div class="task-header">' +
         '<span class="task-no">' + task.id + '</span>' +
         '<div><span class="task-status ' + statusInfo.cls + '">' + statusInfo.text + '</span> ' + urgentHtml + '</div>' +
@@ -483,6 +740,15 @@
       return '<span class="goods-tag">' + r + '</span>';
     }).join('') || '<span style="color:#86909c;font-size:13px">无特殊要求</span>';
 
+    var receiptStatusHtml = '';
+    if (task.status === 'completed') {
+      if (task.receiptStatus === 'confirmed') {
+        receiptStatusHtml = '<div class="detail-row"><span class="detail-label">回单状态</span><span class="detail-value"><span class="task-receipt-status confirmed">已确认</span></span></div>';
+      } else if (task.receiptStatus === 'pending') {
+        receiptStatusHtml = '<div class="detail-row"><span class="detail-label">回单状态</span><span class="detail-value"><span class="task-receipt-status pending">待确认</span></span></div>';
+      }
+    }
+
     body.innerHTML =
       '<div class="detail-section">' +
       '<div class="detail-section-title">运输路线</div>' +
@@ -508,7 +774,9 @@
 
       '<div class="detail-section">' +
       '<div class="detail-section-title">费用信息</div>' +
-      '<div class="detail-row"><span class="detail-label">预估运费</span><span class="detail-value" style="color:#f53f3f;font-weight:700;font-size:16px">¥' + task.price.toLocaleString() + '</span></div>' +
+      '<div class="detail-row"><span class="detail-label">基础运费</span><span class="detail-value" style="color:#f53f3f;font-weight:700;font-size:16px">¥' + task.price.toLocaleString() + '</span></div>' +
+      (task.urgent ? '<div class="detail-row"><span class="detail-label">加急费(8%)</span><span class="detail-value" style="color:#f53f3f">¥' + Math.round(task.price * 0.08).toLocaleString() + '</span></div>' : '') +
+      receiptStatusHtml +
       (task.completedAt ? '<div class="detail-row"><span class="detail-label">完成时间</span><span class="detail-value">' + task.completedAt + '</span></div>' : '') +
       (task.acceptedAt ? '<div class="detail-row"><span class="detail-label">接单时间</span><span class="detail-value">' + task.acceptedAt + '</span></div>' : '') +
       '</div>';
@@ -526,7 +794,15 @@
         '<button class="btn btn-primary btn-block" onclick="window.finishTask(\'' + task.id + '\')">查看收入</button>' +
         '</div>';
     } else {
-      footer.innerHTML = '<button class="btn btn-primary btn-block" onclick="window.viewIncome(\'' + task.id + '\')">查看本趟收入</button>';
+      if (task.receiptStatus === 'pending') {
+        footer.innerHTML =
+          '<div style="display:flex;gap:10px">' +
+          '<button class="btn btn-outline btn-block" onclick="window.viewIncome(\'' + task.id + '\')">查看结算</button>' +
+          '<button class="btn btn-primary btn-block" onclick="window.confirmReceipt(\'' + task.id + '\')">确认电子回单</button>' +
+          '</div>';
+      } else {
+        footer.innerHTML = '<button class="btn btn-primary btn-block" onclick="window.viewIncome(\'' + task.id + '\')">查看本趟收入</button>';
+      }
     }
 
     document.getElementById('taskDetailModal').classList.add('active');
@@ -534,15 +810,57 @@
 
   window.viewTask = viewTask;
 
+  window.confirmReceipt = function (taskId) {
+    var task = appState.tasks.find(function (t) { return t.id === taskId; });
+    if (!task) return;
+
+    task.receiptStatus = 'confirmed';
+    saveData(STORAGE_KEYS.TASKS, appState.tasks);
+
+    var msg = appState.messages.find(function (m) { return m.taskId === taskId && m.type === 'receipt'; });
+    if (msg && msg.receipt) {
+      msg.receipt.status = '已确认';
+      saveData(STORAGE_KEYS.MESSAGES, appState.messages);
+    } else {
+      appState.messages.unshift({
+        id: 'M' + Date.now(),
+        type: 'receipt',
+        typeName: '回单',
+        title: '电子回单已确认',
+        content: '任务' + taskId + '电子回单您已确认签收。',
+        time: formatTime(new Date()),
+        read: false,
+        taskId: taskId,
+        receipt: {
+          taskNo: taskId,
+          startAddr: task.startAddr,
+          endAddr: task.endAddr,
+          cargoName: task.cargoName,
+          cargoWeight: task.cargoWeight,
+          signTime: formatTime(new Date()),
+          signer: '司机本人',
+          status: '已确认'
+        }
+      });
+      saveData(STORAGE_KEYS.MESSAGES, appState.messages);
+    }
+
+    document.getElementById('taskDetailModal').classList.remove('active');
+    showToast('电子回单已确认');
+    renderTaskList();
+    renderMessages();
+    updateMsgBadge();
+  };
+
   window.acceptTask = function (taskId) {
     var task = appState.tasks.find(function (t) { return t.id === taskId; });
     if (!task) return;
     task.status = 'accepted';
     task.acceptedAt = formatTime(new Date());
     task.checkinStep = 0;
+    task.receiptStatus = 'none';
     appState.currentTaskId = taskId;
-    appState.checkinStep = 0;
-    localStorage.setItem(STORAGE_KEYS.CURRENT_TASK, taskId);
+    saveData(STORAGE_KEYS.CURRENT_TASK, taskId);
     saveData(STORAGE_KEYS.TASKS, appState.tasks);
 
     appState.messages.unshift({
@@ -562,6 +880,7 @@
     renderCheckinStatus();
     renderNavPage();
     renderMessages();
+    renderTaskSwitchers();
     updateMsgBadge();
 
     setTimeout(function () {
@@ -597,34 +916,50 @@
     var task = appState.tasks.find(function (t) { return t.id === taskId; });
     if (!task) return;
 
-    var taskExpenses = appState.expenses.filter(function (e) { return e.taskId === taskId; });
-    var fuelCost = taskExpenses.filter(function (e) { return e.type === 'fuel'; }).reduce(function (s, e) { return s + e.amount; }, 0);
-    var tollCost = taskExpenses.filter(function (e) { return e.type === 'toll'; }).reduce(function (s, e) { return s + e.amount; }, 0);
-    var parkingCost = taskExpenses.filter(function (e) { return e.type === 'parking'; }).reduce(function (s, e) { return s + e.amount; }, 0);
-    var otherCost = taskExpenses.filter(function (e) { return e.type === 'other'; }).reduce(function (s, e) { return s + e.amount; }, 0);
-    var totalCost = fuelCost + tollCost + parkingCost + otherCost;
-    var netIncome = task.price - totalCost;
+    var s = calculateSettlement(taskId);
+
+    var settlementCard = '';
+    if (task.status === 'completed') {
+      settlementCard =
+        '<div class="settlement-card">' +
+        '<div class="settlement-title">📋 本趟结算摘要</div>' +
+        '<div class="settlement-row"><span>任务单号</span><span>' + task.id + '</span></div>' +
+        '<div class="settlement-row"><span>运输路线</span><span>' + task.startAddr.substring(0, 10) + '→' + task.endAddr.substring(0, 10) + '</span></div>' +
+        '<div class="settlement-row"><span>完成时间</span><span>' + (task.completedAt || '--') + '</span></div>' +
+        '<div class="settlement-row total"><span>净收入</span><span style="color:#00b42a;font-weight:700;font-size:18px">¥' + s.netIncome.toLocaleString() + '</span></div>' +
+        '</div>';
+    }
 
     var body = document.getElementById('incomeBody');
     body.innerHTML =
-      '<div class="detail-section">' +
+      settlementCard +
+
+      '<div class="detail-section income-summary-card">' +
       '<div class="detail-section-title">运费收入</div>' +
-      '<div class="income-item"><span class="income-label">基础运费</span><span class="income-value">¥' + task.price.toLocaleString() + '</span></div>' +
-      (task.urgent ? '<div class="income-item"><span class="income-label">加急费</span><span class="income-value">¥200</span></div>' : '') +
+      '<div class="income-item"><span class="income-label">基础运费</span><span class="income-value">¥' + s.basePrice.toLocaleString() + '</span></div>' +
+      (task.urgent ? '<div class="income-item"><span class="income-label">加急费(运费×8%)</span><span class="income-value" style="color:#00b42a">+¥' + s.urgentFee.toLocaleString() + '</span></div>' : '') +
+      '<div class="income-item"><span class="income-label" style="font-weight:600">收入合计</span><span class="income-value" style="font-weight:700;color:#00b42a">¥' + s.totalIncome.toLocaleString() + '</span></div>' +
       '</div>' +
 
       '<div class="detail-section">' +
       '<div class="detail-section-title">成本支出</div>' +
-      '<div class="income-item"><span class="income-label">⛽ 油费</span><span class="income-value">-¥' + fuelCost.toLocaleString() + '</span></div>' +
-      '<div class="income-item"><span class="income-label">🛣️ 过路费</span><span class="income-value">-¥' + tollCost.toLocaleString() + '</span></div>' +
-      '<div class="income-item"><span class="income-label">🅿️ 停车费</span><span class="income-value">-¥' + parkingCost.toLocaleString() + '</span></div>' +
-      '<div class="income-item"><span class="income-label">💰 其他费用</span><span class="income-value">-¥' + otherCost.toLocaleString() + '</span></div>' +
-      '<div class="income-item"><span class="income-label">支出合计</span><span class="income-value" style="color:#f53f3f;font-weight:600">-¥' + totalCost.toLocaleString() + '</span></div>' +
+      '<div class="income-item"><span class="income-label">⛽ 油费</span><span class="income-value" style="color:#f53f3f">-¥' + s.fuelCost.toLocaleString() + '</span></div>' +
+      '<div class="income-item"><span class="income-label">🛣️ 过路费</span><span class="income-value" style="color:#f53f3f">-¥' + s.tollCost.toLocaleString() + '</span></div>' +
+      '<div class="income-item"><span class="income-label">🅿️ 停车费</span><span class="income-value" style="color:#f53f3f">-¥' + s.parkingCost.toLocaleString() + '</span></div>' +
+      (s.otherCost > 0 ? '<div class="income-item"><span class="income-label">💰 其他费用</span><span class="income-value" style="color:#f53f3f">-¥' + s.otherCost.toLocaleString() + '</span></div>' : '') +
+      '<div class="income-item"><span class="income-label" style="font-weight:600">支出合计</span><span class="income-value" style="color:#f53f3f;font-weight:700">-¥' + s.totalCost.toLocaleString() + '</span></div>' +
       '</div>' +
+
+      ((s.totalDeduct > 0 || s.totalSubsidy > 0) ?
+        '<div class="detail-section">' +
+        '<div class="detail-section-title">异常调整</div>' +
+        (s.totalDeduct > 0 ? '<div class="income-item"><span class="income-label"><span class="exception-tag deduct">扣款</span>异常扣款</span><span class="income-value" style="color:#f53f3f">-¥' + s.totalDeduct.toLocaleString() + '</span></div>' : '') +
+        (s.totalSubsidy > 0 ? '<div class="income-item"><span class="income-label"><span class="exception-tag subsidy">补贴</span>调度补贴</span><span class="income-value" style="color:#00b42a">+¥' + s.totalSubsidy.toLocaleString() + '</span></div>' : '') +
+        '</div>' : '') +
 
       '<div class="income-total">' +
       '<span class="income-total-label">预估净收入</span>' +
-      '<span class="income-total-value">¥' + (netIncome > 0 ? netIncome : 0).toLocaleString() + '</span>' +
+      '<span class="income-total-value">¥' + s.netIncome.toLocaleString() + '</span>' +
       '</div>';
 
     document.getElementById('incomeModal').classList.add('active');
@@ -649,18 +984,20 @@
 
     task.status = 'completed';
     task.completedAt = formatTime(new Date());
-    task.income = task.price;
     task.checkinStep = 3;
+    task.receiptStatus = 'pending';
+    task.settlement = calculateSettlement(taskId);
     saveData(STORAGE_KEYS.TASKS, appState.tasks);
 
     appState.messages.unshift({
       id: 'M' + Date.now(),
       type: 'receipt',
       typeName: '回单',
-      title: '任务完成通知',
-      content: '恭喜！任务' + taskId + '已完成，电子回单待确认。',
+      title: '电子回单待确认',
+      content: '恭喜！任务' + taskId + '已完成，请确认电子回单。',
       time: formatTime(new Date()),
       read: false,
+      taskId: taskId,
       receipt: {
         taskNo: taskId,
         startAddr: task.startAddr,
@@ -675,11 +1012,12 @@
     saveData(STORAGE_KEYS.MESSAGES, appState.messages);
 
     document.getElementById('incomeModal').classList.remove('active');
-    showToast('任务已完成！');
+    showToast('任务已完成！请确认电子回单');
     renderTaskList();
     renderCheckinStatus();
     renderNavPage();
     renderMessages();
+    renderTaskSwitchers();
     updateMsgBadge();
   }
 
@@ -687,7 +1025,7 @@
     var emptyEl = document.getElementById('navEmpty');
     var containerEl = document.getElementById('navContainer');
 
-    var currentTask = appState.tasks.find(function (t) { return t.status === 'accepted'; });
+    var currentTask = getCurrentTask();
     if (!currentTask) {
       emptyEl.style.display = 'block';
       containerEl.style.display = 'none';
@@ -704,16 +1042,19 @@
     var mins = currentTask.distance % 60;
     document.getElementById('navDuration').textContent = (hours > 0 ? hours + '小时' : '') + mins + '分钟';
 
-    document.getElementById('startNavBtn').addEventListener('click', function () {
+    var navBtn = document.getElementById('startNavBtn');
+    var newBtn = navBtn.cloneNode(true);
+    navBtn.parentNode.replaceChild(newBtn, navBtn);
+    newBtn.addEventListener('click', function () {
       showToast('正在调起导航...');
-    }, { once: true });
+    });
   }
 
   function renderCheckinStatus() {
     var emptyEl = document.getElementById('checkinEmpty');
     var containerEl = document.getElementById('checkinContainer');
 
-    var currentTask = appState.tasks.find(function (t) { return t.status === 'accepted'; });
+    var currentTask = getCurrentTask();
     if (!currentTask) {
       emptyEl.style.display = 'block';
       containerEl.style.display = 'none';
@@ -727,9 +1068,13 @@
     var btnTexts = ['到达装货点打卡', '到达休息点打卡', '到达卸货点打卡', '已完成全部打卡'];
     document.getElementById('checkinBtnText').textContent = btnTexts[step] || btnTexts[3];
 
+    var checkinBtn = document.getElementById('checkinBtn');
     if (step >= 3) {
-      document.getElementById('checkinBtn').disabled = true;
-      document.getElementById('checkinBtn').style.opacity = '0.6';
+      checkinBtn.disabled = true;
+      checkinBtn.style.opacity = '0.6';
+    } else {
+      checkinBtn.disabled = false;
+      checkinBtn.style.opacity = '1';
     }
 
     var steps = [document.querySelector('#page-checkin .progress-step:first-child'), document.getElementById('step2'), document.getElementById('step3')];
@@ -745,12 +1090,66 @@
       l.classList.toggle('done', i < step);
     });
 
-    renderCheckinHistory();
+    renderStepDetailCard(currentTask, step);
+    renderTaskPhotos(currentTask.id);
+    renderCheckinHistory(currentTask.id);
+  }
+
+  function renderStepDetailCard(task, step) {
+    if (step >= 3) step = 2;
+    var meta = STEP_META[step];
+    var taskCheckins = appState.checkins.filter(function (c) { return c.taskId === task.id && c.step === step + 1; });
+    var hasCheckedIn = taskCheckins.length > 0;
+
+    document.getElementById('stepDetailIcon').textContent = meta.icon;
+    document.getElementById('stepDetailName').textContent = meta.name;
+    var statusEl = document.getElementById('stepDetailStatus');
+    if (hasCheckedIn) {
+      statusEl.textContent = '已完成';
+      statusEl.className = 'step-detail-status done';
+    } else if ((task.checkinStep || 0) > step) {
+      statusEl.textContent = '已完成';
+      statusEl.className = 'step-detail-status done';
+    } else {
+      statusEl.textContent = '待打卡';
+      statusEl.className = 'step-detail-status';
+    }
+
+    document.getElementById('stepPlanTime').textContent = task[meta.timeLabel] || '--';
+
+    var checkinTimeEl = document.getElementById('stepCheckinTime');
+    if (hasCheckedIn) {
+      checkinTimeEl.textContent = '已打卡 · ' + taskCheckins[0].time;
+      checkinTimeEl.style.color = '#00b42a';
+    } else {
+      checkinTimeEl.textContent = '未打卡';
+      checkinTimeEl.style.color = '';
+    }
+  }
+
+  function renderTaskPhotos(taskId) {
+    Object.keys(PHOTO_TYPES).forEach(function (type) {
+      var photo = getPhoto(taskId, type);
+      var capType = type.charAt(0).toUpperCase() + type.slice(1);
+      var previewEl = document.getElementById('preview' + capType);
+      var itemEl = document.querySelector('.photo-item[data-type="' + type + '"]');
+
+      if (photo && previewEl) {
+        previewEl.innerHTML = '<img src="' + photo.dataUrl + '" alt="preview" onclick="window.previewPhoto(\'' + type + '\')" />';
+        if (itemEl) itemEl.classList.add('has-photo');
+      } else if (previewEl) {
+        previewEl.innerHTML = '';
+        if (itemEl) itemEl.classList.remove('has-photo');
+      }
+    });
   }
 
   function doCheckin() {
-    var currentTask = appState.tasks.find(function (t) { return t.status === 'accepted'; });
-    if (!currentTask) return;
+    var currentTask = getCurrentTask();
+    if (!currentTask) {
+      showToast('请先选择当前任务');
+      return;
+    }
 
     var step = currentTask.checkinStep || 0;
     if (step >= 3) {
@@ -759,7 +1158,7 @@
     }
 
     var stepNames = ['装货打卡', '在途休息打卡', '卸货打卡'];
-    var locationText = document.getElementById('locationText').textContent;
+    var locationText = document.getElementById('locationText') ? document.getElementById('locationText').textContent : '定位成功';
 
     var checkin = {
       id: 'C' + Date.now(),
@@ -775,14 +1174,13 @@
 
     currentTask.checkinStep = step + 1;
     saveData(STORAGE_KEYS.TASKS, appState.tasks);
-    appState.checkinStep = step + 1;
 
     appState.messages.unshift({
       id: 'M' + Date.now(),
       type: 'dispatch',
       typeName: '调度',
       title: stepNames[step] + '成功',
-      content: '您已完成' + stepNames[step] + '，打卡时间：' + checkin.time,
+      content: '任务' + currentTask.id + '已完成' + stepNames[step] + '，打卡时间：' + checkin.time,
       time: checkin.time,
       read: false
     });
@@ -791,18 +1189,22 @@
     showToast(stepNames[step] + '成功！');
     renderCheckinStatus();
     renderMessages();
+    renderTaskList();
     updateMsgBadge();
   }
 
-  function renderCheckinHistory() {
+  function renderCheckinHistory(taskId) {
     var listEl = document.getElementById('historyList');
-    var currentTask = appState.tasks.find(function (t) { return t.status === 'accepted'; });
-    if (!currentTask) {
-      listEl.innerHTML = '<div class="empty-state" style="padding:20px">暂无打卡记录</div>';
-      return;
+    if (!taskId) {
+      var cur = getCurrentTask();
+      if (!cur) {
+        listEl.innerHTML = '<div class="empty-state" style="padding:20px">暂无打卡记录</div>';
+        return;
+      }
+      taskId = cur.id;
     }
 
-    var list = appState.checkins.filter(function (c) { return c.taskId === currentTask.id; });
+    var list = appState.checkins.filter(function (c) { return c.taskId === taskId; });
     if (list.length === 0) {
       listEl.innerHTML = '<div class="empty-state" style="padding:20px">暂无打卡记录</div>';
       return;
@@ -822,6 +1224,12 @@
   }
 
   function addExpense() {
+    var currentTask = getCurrentTask();
+    if (!currentTask) {
+      showToast('请先选择当前任务再登记费用');
+      return;
+    }
+
     var amountEl = document.getElementById('expenseAmount');
     var remarkEl = document.getElementById('expenseRemark');
     var timeEl = document.getElementById('expenseTime');
@@ -833,11 +1241,10 @@
     }
 
     var typeNames = { fuel: '油费', toll: '过路费', parking: '停车费', other: '其他' };
-    var currentTask = appState.tasks.find(function (t) { return t.status === 'accepted'; });
 
     var expense = {
       id: 'E' + Date.now(),
-      taskId: currentTask ? currentTask.id : 'general',
+      taskId: currentTask.id,
       type: appState.expenseType,
       typeName: typeNames[appState.expenseType],
       amount: amount,
@@ -852,13 +1259,21 @@
     remarkEl.value = '';
     timeEl.value = now();
 
-    showToast('费用登记成功');
+    showToast('费用登记成功（归属任务：' + currentTask.id + '）');
     renderExpenses();
   }
 
   function submitException() {
+    var currentTask = getCurrentTask();
+    if (!currentTask) {
+      showToast('请先选择当前任务再提交异常');
+      return;
+    }
+
     var typeEl = document.getElementById('exceptionType');
     var descEl = document.getElementById('exceptionDesc');
+    var deductEl = document.getElementById('exceptionDeduct');
+    var subsidyEl = document.getElementById('exceptionSubsidy');
 
     if (!typeEl.value) {
       showToast('请选择异常类型');
@@ -869,14 +1284,29 @@
       return;
     }
 
+    var deduct = parseFloat(deductEl.value) || 0;
+    var subsidy = parseFloat(subsidyEl.value) || 0;
+
     var typeNames = { traffic: '交通拥堵', weather: '恶劣天气', vehicle: '车辆故障', cargo: '货物异常', other: '其他' };
+
+    var exc = {
+      id: 'X' + Date.now(),
+      taskId: currentTask.id,
+      type: typeEl.value,
+      typeName: typeNames[typeEl.value],
+      desc: descEl.value,
+      deduct: deduct,
+      subsidy: subsidy,
+      time: formatTime(new Date())
+    };
+    addTaskException(currentTask.id, exc);
 
     appState.messages.unshift({
       id: 'M' + Date.now(),
       type: 'dispatch',
       typeName: '调度',
       title: '异常上报-' + typeNames[typeEl.value],
-      content: descEl.value,
+      content: descEl.value + (deduct > 0 ? '（扣款¥' + deduct + '）' : '') + (subsidy > 0 ? '（补贴¥' + subsidy + '）' : ''),
       time: formatTime(new Date()),
       read: false
     });
@@ -884,6 +1314,8 @@
 
     typeEl.value = '';
     descEl.value = '';
+    deductEl.value = '';
+    subsidyEl.value = '';
 
     showToast('异常已提交，调度员将尽快处理');
     renderMessages();
@@ -892,20 +1324,23 @@
 
   function renderExpenses() {
     var listEl = document.getElementById('expenseList');
-    if (appState.expenses.length === 0) {
-      listEl.innerHTML = '<div class="empty-state">暂无费用记录</div>';
+    var currentTask = getCurrentTask();
+    var taskExpenses = currentTask ? appState.expenses.filter(function (e) { return e.taskId === currentTask.id; }) : [];
+
+    if (taskExpenses.length === 0) {
+      listEl.innerHTML = '<div class="empty-state">暂无费用记录' + (currentTask ? '' : '（请先选择任务）') + '</div>';
       document.getElementById('totalExpense').textContent = '¥0';
       document.getElementById('expenseCount').textContent = '0';
       return;
     }
 
-    var total = appState.expenses.reduce(function (s, e) { return s + e.amount; }, 0);
+    var total = taskExpenses.reduce(function (s, e) { return s + e.amount; }, 0);
     document.getElementById('totalExpense').textContent = '¥' + total.toLocaleString();
-    document.getElementById('expenseCount').textContent = appState.expenses.length;
+    document.getElementById('expenseCount').textContent = taskExpenses.length;
 
     var typeIcons = { fuel: '⛽', toll: '🛣️', parking: '🅿️', other: '💰' };
 
-    listEl.innerHTML = appState.expenses.map(function (e) {
+    listEl.innerHTML = taskExpenses.map(function (e) {
       return '<div class="expense-item">' +
         '<div class="expense-left">' +
         '<div class="expense-icon ' + e.type + '">' + typeIcons[e.type] + '</div>' +
@@ -938,12 +1373,16 @@
 
     listEl.innerHTML = list.map(function (m) {
       var receiptHtml = '';
+      var confirmBtnHtml = '';
       if (m.receipt) {
+        var isPending = m.receipt.status === '待确认';
         receiptHtml = '<div class="receipt-preview">' +
           '<div class="receipt-row"><span class="receipt-label">任务单号</span><span class="receipt-value">' + m.receipt.taskNo + '</span></div>' +
           '<div class="receipt-row"><span class="receipt-label">货物信息</span><span class="receipt-value">' + m.receipt.cargoName + ' / ' + m.receipt.cargoWeight + '</span></div>' +
           '<div class="receipt-row"><span class="receipt-label">签收时间</span><span class="receipt-value">' + m.receipt.signTime + '</span></div>' +
           '<div class="receipt-row"><span class="receipt-label">签收人</span><span class="receipt-value">' + m.receipt.signer + '（' + m.receipt.status + '）</span></div>' +
+          (isPending && m.taskId ?
+            '<div style="margin-top:12px"><button class="btn btn-primary btn-block btn-sm" onclick="event.stopPropagation();window.confirmReceipt(\'' + m.taskId + '\')">确认电子回单</button></div>' : '') +
           '</div>';
       }
 

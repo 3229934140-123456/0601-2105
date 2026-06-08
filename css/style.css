@@ -2075,6 +2075,311 @@ select.form-input {
   text-decoration: underline;
 }
 
+.settlement-progress {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 16px 0 8px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e6f4ff 100%);
+  border-radius: 10px;
+  position: relative;
+}
+
+.sp-step {
+  flex: 1;
+  text-align: center;
+  position: relative;
+  z-index: 1;
+}
+
+.sp-dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #e5e6eb;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 4px;
+}
+
+.sp-step.active .sp-dot {
+  background: #1677ff;
+  box-shadow: 0 0 0 4px rgba(22, 119, 255, 0.15);
+}
+
+.sp-step.done .sp-dot {
+  background: #00b42a;
+}
+
+.sp-label {
+  font-size: 11px;
+  color: #86909c;
+}
+
+.sp-step.active .sp-label,
+.sp-step.done .sp-label {
+  color: #1f2329;
+  font-weight: 600;
+}
+
+.sp-line {
+  position: absolute;
+  top: 24px;
+  left: 20%;
+  right: 20%;
+  height: 2px;
+  background: #e5e6eb;
+  z-index: 0;
+}
+
+.sp-line.done {
+  background: #00b42a;
+}
+
+.paid-info-card {
+  background: linear-gradient(135deg, #e8ffea 0%, #d3f7d6 100%);
+  border: 1px solid #95e5a6;
+  border-radius: 10px;
+  padding: 14px;
+  margin-top: 12px;
+}
+
+.paid-info-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #007a1f;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.paid-info-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.paid-info-row .paid-label {
+  color: #4e5969;
+}
+
+.paid-info-row .paid-value {
+  color: #1f2329;
+  font-weight: 500;
+  font-family: 'SF Mono', 'Menlo', monospace;
+}
+
+.net-income.negative {
+  color: #f53f3f !important;
+}
+
+.formula-hint {
+  background: #f7f8fa;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: #4e5969;
+  margin-top: 8px;
+  line-height: 1.6;
+}
+
+.formula-hint .f-num {
+  font-weight: 600;
+  font-family: 'SF Mono', 'Menlo', monospace;
+}
+
+.subtask-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px 0;
+  background: #fff;
+  border-bottom: 1px solid #e5e6eb;
+}
+
+.subtask-tab {
+  padding: 6px 12px;
+  border-radius: 6px 6px 0 0;
+  font-size: 13px;
+  color: #86909c;
+  background: #f2f3f5;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.subtask-tab.active {
+  background: #fff;
+  color: #1677ff;
+  font-weight: 600;
+  box-shadow: 0 -2px 0 #1677ff inset;
+}
+
+.view-switcher {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #fff;
+  border-bottom: 1px solid #e5e6eb;
+  align-items: center;
+}
+
+.view-switch-btn {
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #4e5969;
+  background: #f2f3f5;
+  border: none;
+  cursor: pointer;
+}
+
+.view-switch-btn.active {
+  background: #1677ff;
+  color: #fff;
+  font-weight: 600;
+}
+
+.monthly-view {
+  padding: 0 12px 80px;
+}
+
+.month-card {
+  background: #fff;
+  border-radius: 12px;
+  margin-top: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.month-card-header {
+  padding: 14px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  border-bottom: 1px solid #f2f3f5;
+}
+
+.month-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1f2329;
+}
+
+.month-summary {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: #4e5969;
+}
+
+.month-summary .m-num {
+  font-weight: 600;
+  color: #00b42a;
+  font-family: 'SF Mono', 'Menlo', monospace;
+}
+
+.month-card-body {
+  display: none;
+  padding: 0 16px 12px;
+}
+
+.month-card.expanded .month-card-body {
+  display: block;
+}
+
+.month-stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  padding: 12px 0;
+  border-bottom: 1px dashed #e5e6eb;
+}
+
+.ms-item {
+  font-size: 12px;
+}
+
+.ms-label {
+  color: #86909c;
+  margin-bottom: 2px;
+}
+
+.ms-value {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1f2329;
+  font-family: 'SF Mono', 'Menlo', monospace;
+}
+
+.ms-value.positive { color: #00b42a; }
+.ms-value.negative { color: #f53f3f; }
+
+.month-task-row {
+  padding: 10px 0;
+  border-bottom: 1px solid #f2f3f5;
+  font-size: 13px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+
+.month-task-row:last-child {
+  border-bottom: none;
+}
+
+.month-task-info {
+  flex: 1;
+}
+
+.month-task-no {
+  font-weight: 600;
+  color: #1f2329;
+  font-size: 13px;
+}
+
+.month-task-route {
+  font-size: 11px;
+  color: #86909c;
+  margin-top: 2px;
+}
+
+.month-task-amount {
+  font-family: 'SF Mono', 'Menlo', monospace;
+  font-weight: 600;
+  color: #00b42a;
+  text-align: right;
+}
+
+.month-task-status {
+  font-size: 11px;
+  margin-top: 2px;
+  text-align: right;
+}
+
+.pending-adjust-banner {
+  background: #fff7e8;
+  border: 1px solid #ffd591;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: #ad4e00;
+  line-height: 1.5;
+}
+
+.pending-adjust-banner strong {
+  color: #d4380d;
+}
+
 @media (max-width: 360px) {
   .summary-value {
     font-size: 20px;

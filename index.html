@@ -30,7 +30,18 @@
           <button class="task-tab" data-status="accepted">进行中 <span class="badge">1</span></button>
           <button class="task-tab" data-status="completed">已完成</button>
         </div>
+        <div class="subtask-tabs" id="completedSubTabs" style="display:none;">
+          <button class="subtask-tab active" data-settle="all">全部</button>
+          <button class="subtask-tab" data-settle="unsettled">未结算</button>
+          <button class="subtask-tab" data-settle="to_pay">待打款</button>
+          <button class="subtask-tab" data-settle="paid">已到账</button>
+        </div>
+        <div class="view-switcher" id="completedViewSwitcher" style="display:none;">
+          <button class="view-switch-btn active" id="viewTaskListBtn">📋 任务列表</button>
+          <button class="view-switch-btn" id="viewMonthlyBtn">📊 月度收入</button>
+        </div>
         <div class="task-list" id="taskList"></div>
+        <div class="monthly-view" id="monthlyView" style="display:none;"></div>
       </section>
 
       <section class="tab-page" id="page-nav">

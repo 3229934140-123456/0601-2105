@@ -125,6 +125,12 @@
       checkinStep: 3,
       receiptStatus: 'confirmed',
       receiptConfirmedAt: '2026-06-07 10:00',
+      settlementStatus: 'paid',
+      paidInfo: {
+        paidTime: '2026-06-08 15:30',
+        paidAccount: '工商银行 ****6688',
+        transactionId: 'YT20260608001530221'
+      },
       settlement: {
         basePrice: 3200,
         urgentFee: 0,
@@ -136,6 +142,8 @@
         totalCost: 1050,
         totalDeduct: 0,
         totalSubsidy: 200,
+        pendingDeduct: 0,
+        pendingSubsidy: 0,
         netIncome: 2350
       }
     }
@@ -288,6 +296,9 @@
   var appState = {
     currentTab: 'task',
     taskFilter: 'pending',
+    completedFilter: 'all',
+    completedView: 'taskList',
+    expandedMonth: null,
     msgFilter: 'all',
     expenseType: 'fuel',
     tasks: [],
@@ -371,8 +382,12 @@
     var totalCost = fuelCost + tollCost + parkingCost + otherCost;
 
     var taskExcs = getTaskExceptions(taskId);
-    var totalDeduct = taskExcs.reduce(function (s, e) { return s + (e.deduct || 0); }, 0);
-    var totalSubsidy = taskExcs.reduce(function (s, e) { return s + (e.subsidy || 0); }, 0);
+    var resolvedExcs = taskExcs.filter(function (e) { return e.status === 'resolved'; });
+    var pendingExcs = taskExcs.filter(function (e) { return e.status !== 'resolved'; });
+    var totalDeduct = resolvedExcs.reduce(function (s, e) { return s + (e.deduct || 0); }, 0);
+    var totalSubsidy = resolvedExcs.reduce(function (s, e) { return s + (e.subsidy || 0); }, 0);
+    var pendingDeduct = pendingExcs.reduce(function (s, e) { return s + (e.deduct || 0); }, 0);
+    var pendingSubsidy = pendingExcs.reduce(function (s, e) { return s + (e.subsidy || 0); }, 0);
 
     var netIncome = totalIncome - totalCost - totalDeduct + totalSubsidy;
 
@@ -387,11 +402,30 @@
       totalCost: totalCost,
       totalDeduct: totalDeduct,
       totalSubsidy: totalSubsidy,
-      netIncome: netIncome > 0 ? netIncome : 0
+      pendingDeduct: pendingDeduct,
+      pendingSubsidy: pendingSubsidy,
+      netIncome: netIncome
     };
   }
 
   function init() {
+    var rawTasks = localStorage.getItem(STORAGE_KEYS.TASKS);
+    var needReset = false;
+    if (rawTasks) {
+      try {
+        var parsed = JSON.parse(rawTasks);
+        var hasSettlementField = parsed.every(function (t) {
+          return t.status !== 'completed' || t.settlementStatus !== undefined;
+        });
+        if (!hasSettlementField) needReset = true;
+      } catch (e) { needReset = true; }
+    }
+    if (needReset) {
+      Object.keys(STORAGE_KEYS).forEach(function (k) {
+        try { localStorage.removeItem(STORAGE_KEYS[k]); } catch (e) {}
+      });
+    }
+
     appState.tasks = loadData(STORAGE_KEYS.TASKS, defaultTasks);
     appState.expenses = loadData(STORAGE_KEYS.EXPENSES, defaultExpenses);
     appState.checkins = loadData(STORAGE_KEYS.CHECKINS, []);
@@ -461,8 +495,56 @@
         tabs.forEach(function (t) { t.classList.remove('active'); });
         tab.classList.add('active');
         appState.taskFilter = tab.getAttribute('data-status');
+
+        var subTabs = document.getElementById('completedSubTabs');
+        var viewSwitcher = document.getElementById('completedViewSwitcher');
+        if (appState.taskFilter === 'completed') {
+          subTabs.style.display = 'flex';
+          viewSwitcher.style.display = 'flex';
+          if (appState.completedView === 'taskList') {
+            document.getElementById('taskList').style.display = 'block';
+            document.getElementById('monthlyView').style.display = 'none';
+          } else {
+            document.getElementById('taskList').style.display = 'none';
+            document.getElementById('monthlyView').style.display = 'block';
+            renderMonthlyView();
+          }
+        } else {
+          subTabs.style.display = 'none';
+          viewSwitcher.style.display = 'none';
+          document.getElementById('taskList').style.display = 'block';
+          document.getElementById('monthlyView').style.display = 'none';
+        }
         renderTaskList();
       });
+    });
+
+    var subTabs = document.querySelectorAll('.subtask-tab');
+    subTabs.forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        subTabs.forEach(function (t) { t.classList.remove('active'); });
+        tab.classList.add('active');
+        appState.completedFilter = tab.getAttribute('data-settle');
+        renderTaskList();
+      });
+    });
+
+    document.getElementById('viewTaskListBtn').addEventListener('click', function () {
+      document.getElementById('viewTaskListBtn').classList.add('active');
+      document.getElementById('viewMonthlyBtn').classList.remove('active');
+      appState.completedView = 'taskList';
+      document.getElementById('taskList').style.display = 'block';
+      document.getElementById('monthlyView').style.display = 'none';
+      renderTaskList();
+    });
+
+    document.getElementById('viewMonthlyBtn').addEventListener('click', function () {
+      document.getElementById('viewMonthlyBtn').classList.add('active');
+      document.getElementById('viewTaskListBtn').classList.remove('active');
+      appState.completedView = 'monthly';
+      document.getElementById('taskList').style.display = 'none';
+      document.getElementById('monthlyView').style.display = 'block';
+      renderMonthlyView();
     });
   }
 
@@ -666,10 +748,22 @@
     var filter = appState.taskFilter;
     var filtered = appState.tasks.filter(function (t) { return t.status === filter; });
 
+    if (filter === 'completed' && appState.completedFilter !== 'all') {
+      filtered = filtered.filter(function (t) {
+        return t.settlementStatus === appState.completedFilter;
+      });
+    }
+
     if (filtered.length === 0) {
       listEl.innerHTML = '<div class="empty-state"><div class="empty-icon" style="font-size:48px">📋</div>暂无' + statusMap[filter].text + '任务</div>';
       return;
     }
+
+    var settleStatusMap = {
+      unsettled: { text: '未结算', cls: 'task-receipt-status pending' },
+      to_pay: { text: '待打款', cls: 'task-receipt-status pending' },
+      paid: { text: '已到账', cls: 'task-receipt-status confirmed' }
+    };
 
     var currentTask = getCurrentTask();
     var currentId = currentTask ? currentTask.id : null;
@@ -703,10 +797,13 @@
         } else if (task.receiptStatus === 'pending') {
           receiptLabel = '<span class="task-receipt-status pending">回单待确认</span>';
         }
+        var settleStatus = settleStatusMap[task.settlementStatus] || settleStatusMap.unsettled;
+        var net = task.settlement ? task.settlement.netIncome : 0;
+        var netCls = net < 0 ? 'net-income negative' : '';
         footerHtml = '<div class="task-footer">' +
           '<div class="price-detail">' +
-          '<div class="task-price">¥' + (task.settlement ? task.settlement.netIncome : task.price).toLocaleString() + '</div>' +
-          '<div class="price-note">净收入' + receiptLabel + '</div>' +
+          '<div class="task-price ' + netCls + '">' + (net < 0 ? '-' : '') + '¥' + Math.abs(net).toLocaleString() + '</div>' +
+          '<div class="price-note">净收入 ' + settleStatus.text + ' ' + receiptLabel + '</div>' +
           '</div>' +
           '<button class="btn btn-outline" onclick="window.viewTask(\'' + task.id + '\')">查看详情</button>' +
           '</div>';
@@ -880,6 +977,12 @@
 
     task.receiptStatus = 'confirmed';
     task.receiptConfirmedAt = formatTime(new Date());
+    if (!task.settlementStatus || task.settlementStatus === 'unsettled') {
+      task.settlementStatus = 'to_pay';
+    }
+    if (!task.paidInfo) {
+      task.paidInfo = null;
+    }
     saveData(STORAGE_KEYS.TASKS, appState.tasks);
 
     var confirmTime = formatTime(new Date());
@@ -988,11 +1091,87 @@
     showIncome(taskId);
   };
 
+  function getSettlementStatusInfo(status) {
+    var map = {
+      unsettled: { text: '未结算', step: 1 },
+      to_pay: { text: '待打款', step: 2 },
+      paid: { text: '已到账', step: 3 }
+    };
+    return map[status] || map.unsettled;
+  }
+
+  function renderSettlementProgress(task) {
+    var info = getSettlementStatusInfo(task.settlementStatus);
+    var currentStep = info.step;
+    var steps = [
+      { label: '任务完成', icon: '✓' },
+      { label: '待打款', icon: '💰' },
+      { label: '已到账', icon: '✅' }
+    ];
+    var line1 = currentStep >= 2 ? 'sp-line done' : 'sp-line';
+    var line2 = currentStep >= 3 ? 'sp-line done' : 'sp-line';
+    var html = '<div class="settlement-progress">';
+    html += '<div class="' + line1 + '" style="left:16.6%;right:50%"></div>';
+    html += '<div class="' + line2 + '" style="left:50%;right:16.6%"></div>';
+    steps.forEach(function (st, idx) {
+      var stepNum = idx + 1;
+      var cls = '';
+      if (stepNum < currentStep) cls = 'done';
+      else if (stepNum === currentStep) cls = 'active';
+      html += '<div class="sp-step ' + cls + '"><div class="sp-dot">' + st.icon + '</div><div class="sp-label">' + st.label + '</div></div>';
+    });
+    html += '</div>';
+    return html;
+  }
+
+  function renderPaidInfo(task) {
+    if (task.settlementStatus !== 'paid' || !task.paidInfo) return '';
+    return '<div class="paid-info-card">' +
+      '<div class="paid-info-title">✅ 打款已到账</div>' +
+      '<div class="paid-info-row"><span class="paid-label">到账时间</span><span class="paid-value">' + task.paidInfo.paidTime + '</span></div>' +
+      '<div class="paid-info-row"><span class="paid-label">收款账户</span><span class="paid-value">' + task.paidInfo.paidAccount + '</span></div>' +
+      '<div class="paid-info-row"><span class="paid-label">流水号</span><span class="paid-value">' + task.paidInfo.transactionId + '</span></div>' +
+      '</div>';
+  }
+
   function showIncome(taskId) {
     var task = appState.tasks.find(function (t) { return t.id === taskId; });
     if (!task) return;
 
     var s = calculateSettlement(taskId);
+    var netNegative = s.netIncome < 0;
+    var netDisplay = (netNegative ? '-' : '') + '¥' + Math.abs(s.netIncome).toLocaleString();
+    var netCls = netNegative ? 'negative' : '';
+
+    var settleInfo = getSettlementStatusInfo(task.settlementStatus);
+    var settleProgress = task.status === 'completed' ? renderSettlementProgress(task) : '';
+    var paidInfoHtml = task.status === 'completed' ? renderPaidInfo(task) : '';
+
+    var pendingBanner = '';
+    if (task.status === 'completed' && (s.pendingDeduct > 0 || s.pendingSubsidy > 0)) {
+      pendingBanner = '<div class="pending-adjust-banner">' +
+        '⚠️ <strong>待确认调整：</strong>调度处理中，暂不计入本趟净收入。' +
+        (s.pendingDeduct > 0 ? ' 待扣款 ¥' + s.pendingDeduct.toLocaleString() : '') +
+        (s.pendingSubsidy > 0 ? ' 待补贴 ¥' + s.pendingSubsidy.toLocaleString() : '') +
+        '，处理完成后自动更新。' +
+        '</div>';
+    }
+
+    var formulaHtml = '';
+    if (task.status === 'completed') {
+      formulaHtml = '<div class="formula-hint">' +
+        '<div>计算公式：</div>' +
+        '<div>净收入 = <span class="f-num">¥' + s.totalIncome.toLocaleString() + '</span>(收入合计)' +
+        ' - <span class="f-num">¥' + s.totalCost.toLocaleString() + '</span>(支出合计)' +
+        (s.totalSubsidy > 0 ? ' + <span class="f-num">¥' + s.totalSubsidy.toLocaleString() + '</span>(补贴)' : '') +
+        (s.totalDeduct > 0 ? ' - <span class="f-num">¥' + s.totalDeduct.toLocaleString() + '</span>(扣款)' : '') +
+        ' = <span class="f-num" style="color:' + (netNegative ? '#f53f3f' : '#00b42a') + '">' + netDisplay + '</span>' +
+        '</div>' +
+        (s.pendingDeduct > 0 || s.pendingSubsidy > 0 ? '<div style="margin-top:4px;color:#ad4e00">另有 <span class="f-num">¥' +
+          ((s.pendingDeduct || 0) + (s.pendingSubsidy || 0)).toLocaleString() +
+          '</span> 待调度确认，未计入以上公式。</div>' : '') +
+        '</div>';
+    }
 
     var settlementCard = '';
     if (task.status === 'completed') {
@@ -1004,13 +1183,19 @@
         '<div class="settlement-row"><span>任务单号</span><span>' + task.id + (task.urgent ? ' <span class="badge urgent">加急</span>' : '') + '</span></div>' +
         '<div class="settlement-row"><span>运输路线</span><span>' + task.startAddr.substring(0, 10) + '→' + task.endAddr.substring(0, 10) + '</span></div>' +
         '<div class="settlement-row"><span>完成时间</span><span>' + (task.completedAt || '--') + '</span></div>' +
+        '<div class="settlement-row"><span>结算状态</span><span>' + settleInfo.text + '</span></div>' +
         '<div class="settlement-row"><span>基础运费</span><span>¥' + s.basePrice.toLocaleString() + '</span></div>' +
         urgentHtml +
         '<div class="settlement-row"><span>成本支出</span><span style="color:#f53f3f">-¥' + s.totalCost.toLocaleString() + '</span></div>' +
         (s.totalDeduct > 0 ? '<div class="settlement-row"><span>异常扣款</span><span style="color:#f53f3f">-¥' + s.totalDeduct.toLocaleString() + '</span></div>' : '') +
         (s.totalSubsidy > 0 ? '<div class="settlement-row"><span>调度补贴</span><span style="color:#00b42a">+¥' + s.totalSubsidy.toLocaleString() + '</span></div>' : '') +
-        '<div class="settlement-row total"><span>净收入</span><span style="color:#00b42a;font-weight:700;font-size:18px">¥' + s.netIncome.toLocaleString() + '</span></div>' +
-        '</div>';
+        (s.pendingDeduct > 0 ? '<div class="settlement-row"><span>待确认扣款</span><span style="color:#ff9500">¥' + s.pendingDeduct.toLocaleString() + ' (待处理)</span></div>' : '') +
+        (s.pendingSubsidy > 0 ? '<div class="settlement-row"><span>待确认补贴</span><span style="color:#ff9500">¥' + s.pendingSubsidy.toLocaleString() + ' (待处理)</span></div>' : '') +
+        '<div class="settlement-row total"><span>净收入</span><span class="net-income ' + netCls + '" style="font-weight:700;font-size:18px">' + netDisplay + '</span></div>' +
+        '</div>' +
+        settleProgress +
+        paidInfoHtml +
+        pendingBanner;
     }
 
     var body = document.getElementById('incomeBody');
@@ -1033,16 +1218,20 @@
       '<div class="income-item"><span class="income-label" style="font-weight:600">支出合计</span><span class="income-value" style="color:#f53f3f;font-weight:700">-¥' + s.totalCost.toLocaleString() + '</span></div>' +
       '</div>' +
 
-      ((s.totalDeduct > 0 || s.totalSubsidy > 0) ?
+      ((s.totalDeduct > 0 || s.totalSubsidy > 0 || s.pendingDeduct > 0 || s.pendingSubsidy > 0) ?
         '<div class="detail-section">' +
         '<div class="detail-section-title">异常调整 <span class="settlement-trace-link" onclick="document.getElementById(\'closeIncomeModal\').click();window.viewTask(\'' + taskId + '\')">查看来源 →</span></div>' +
-        (s.totalDeduct > 0 ? '<div class="income-item"><span class="income-label"><span class="exception-tag deduct">扣款</span>异常扣款</span><span class="income-value" style="color:#f53f3f">-¥' + s.totalDeduct.toLocaleString() + '</span></div>' : '') +
-        (s.totalSubsidy > 0 ? '<div class="income-item"><span class="income-label"><span class="exception-tag subsidy">补贴</span>调度补贴</span><span class="income-value" style="color:#00b42a">+¥' + s.totalSubsidy.toLocaleString() + '</span></div>' : '') +
+        (s.totalDeduct > 0 ? '<div class="income-item"><span class="income-label"><span class="exception-tag deduct">扣款</span>已处理扣款</span><span class="income-value" style="color:#f53f3f">-¥' + s.totalDeduct.toLocaleString() + '</span></div>' : '') +
+        (s.totalSubsidy > 0 ? '<div class="income-item"><span class="income-label"><span class="exception-tag subsidy">补贴</span>已处理补贴</span><span class="income-value" style="color:#00b42a">+¥' + s.totalSubsidy.toLocaleString() + '</span></div>' : '') +
+        (s.pendingDeduct > 0 ? '<div class="income-item"><span class="income-label"><span class="exception-tag" style="background:#fff7e8;color:#ff9500;border:1px solid #ffd591">待处理</span>待确认扣款</span><span class="income-value" style="color:#ff9500">¥' + s.pendingDeduct.toLocaleString() + ' (暂不计入)</span></div>' : '') +
+        (s.pendingSubsidy > 0 ? '<div class="income-item"><span class="income-label"><span class="exception-tag" style="background:#fff7e8;color:#ff9500;border:1px solid #ffd591">待处理</span>待确认补贴</span><span class="income-value" style="color:#ff9500">¥' + s.pendingSubsidy.toLocaleString() + ' (暂不计入)</span></div>' : '') +
         '</div>' : '') +
+
+      formulaHtml +
 
       '<div class="income-total">' +
       '<span class="income-total-label">' + (task.status === 'completed' ? '本趟净收入' : '预估净收入') + '</span>' +
-      '<span class="income-total-value">¥' + s.netIncome.toLocaleString() + '</span>' +
+      '<span class="income-total-value net-income ' + netCls + '">' + netDisplay + '</span>' +
       '</div>';
 
     document.getElementById('incomeModal').classList.add('active');
@@ -1069,6 +1258,8 @@
     task.completedAt = formatTime(new Date());
     task.checkinStep = 3;
     task.receiptStatus = 'pending';
+    task.settlementStatus = 'unsettled';
+    task.paidInfo = null;
     task.settlement = calculateSettlement(taskId);
     saveData(STORAGE_KEYS.TASKS, appState.tasks);
 
@@ -1413,6 +1604,13 @@
       exc.handleTime = formatTime(new Date());
       saveData(STORAGE_KEYS.EXCEPTIONS, appState.exceptions);
 
+      var task = appState.tasks.find(function (t) { return t.id === currentTask.id; });
+      if (task && task.status === 'completed') {
+        task.settlement = calculateSettlement(task.id);
+        saveData(STORAGE_KEYS.TASKS, appState.tasks);
+        renderTaskList();
+      }
+
       appState.messages.unshift({
         id: 'M' + Date.now(),
         type: 'dispatch',
@@ -1619,10 +1817,38 @@
     var taskCheckins = appState.checkins.filter(function (c) { return c.taskId === taskId; });
     var stepIcons = ['🏭', '☕', '🏢'];
     var stepNames = ['装货打卡完成', '休息打卡完成', '卸货打卡完成'];
-    taskCheckins.forEach(function (c) {
-      var idx = c.step - 1;
-      items.push({ sort: c.time, icon: stepIcons[idx] || '📍', title: stepNames[idx] || c.name, time: c.time, desc: '打卡位置：' + c.location });
-    });
+    var stepLocationFallback = [task.startAddr || '装货地', '服务区/途中休息', task.endAddr || '卸货地'];
+
+    var existingSteps = {};
+    taskCheckins.forEach(function (c) { existingSteps[c.step] = c; });
+
+    var shouldFillMissing = task.checkinStep && task.checkinStep >= 1 && taskCheckins.length < task.checkinStep;
+    for (var step = 1; step <= 3; step++) {
+      if (step <= (task.checkinStep || 0)) {
+        if (existingSteps[step]) {
+          var c = existingSteps[step];
+          var idx = c.step - 1;
+          items.push({ sort: c.time, icon: stepIcons[idx] || '📍', title: stepNames[idx] || c.name, time: c.time, desc: '打卡位置：' + c.location });
+        } else if (shouldFillMissing) {
+          var fallbackTime = '';
+          if (step === 1) fallbackTime = task.startTime || task.acceptedAt || task.createdAt;
+          else if (step === 3) fallbackTime = task.completedAt || task.endTime;
+          else {
+            var s = task.startTime || task.acceptedAt || task.createdAt;
+            var e = task.completedAt || task.endTime;
+            fallbackTime = (s && e) ? s.substring(0, 10) + ' 途中' : (s || e || '');
+          }
+          var sidx = step - 1;
+          items.push({
+            sort: fallbackTime + '_' + step,
+            icon: stepIcons[sidx],
+            title: stepNames[sidx] + ' (记录补全)',
+            time: fallbackTime,
+            desc: '无详细打卡记录，基于' + (step === 1 ? '计划装货' : (step === 3 ? '任务完成' : '运输途中')) + '时间补全 · 地点：' + stepLocationFallback[sidx]
+          });
+        }
+      }
+    }
 
     var taskPhotos = appState.photos[taskId] || {};
     Object.keys(taskPhotos).forEach(function (type) {
@@ -1650,6 +1876,12 @@
     if (task.receiptStatus === 'confirmed' && task.receiptConfirmedAt) {
       items.push({ sort: task.receiptConfirmedAt, icon: '📄', title: '回单已确认', time: task.receiptConfirmedAt, desc: '电子回单已签收确认' });
     }
+    if (task.settlementStatus === 'to_pay' && task.receiptConfirmedAt) {
+      items.push({ sort: task.receiptConfirmedAt + '_pay', icon: '💰', title: '进入待打款', time: task.receiptConfirmedAt + ' (稍后)', desc: '回单已确认，财务打款中' });
+    }
+    if (task.settlementStatus === 'paid' && task.paidInfo && task.paidInfo.paidTime) {
+      items.push({ sort: task.paidInfo.paidTime, icon: '💵', title: '运费已到账', time: task.paidInfo.paidTime, desc: '已到账 ' + task.paidInfo.paidAccount + '，流水号：' + task.paidInfo.transactionId });
+    }
 
     items.sort(function (a, b) { return a.sort < b.sort ? -1 : 1; });
     return items;
@@ -1676,6 +1908,108 @@
     html += '</div>';
     return html;
   }
+
+  function renderMonthlyView() {
+    var viewEl = document.getElementById('monthlyView');
+    var completed = appState.tasks.filter(function (t) { return t.status === 'completed'; });
+
+    var monthMap = {};
+    completed.forEach(function (t) {
+      var timeKey = t.completedAt || t.endTime || t.startTime;
+      var ym = timeKey ? timeKey.substring(0, 7) : '未知';
+      if (!monthMap[ym]) {
+        monthMap[ym] = [];
+      }
+      monthMap[ym].push(t);
+    });
+
+    var months = Object.keys(monthMap).sort(function (a, b) { return b < a ? -1 : 1; });
+    if (months.length === 0) {
+      viewEl.innerHTML = '<div class="empty-state"><div class="empty-icon" style="font-size:48px">📊</div>暂无历史收入数据</div>';
+      return;
+    }
+
+    var html = '';
+    months.forEach(function (ym) {
+      var tasks = monthMap[ym];
+      var sumFreight = 0;
+      var sumIncome = 0;
+      var sumCost = 0;
+      var sumDeduct = 0;
+      var sumSubsidy = 0;
+      var sumPaid = 0;
+      var sumUnpaid = 0;
+      var sumNet = 0;
+
+      tasks.forEach(function (t) {
+        var s = t.settlement || calculateSettlement(t.id);
+        sumFreight += s.basePrice;
+        sumIncome += s.totalIncome;
+        sumCost += s.totalCost;
+        sumDeduct += s.totalDeduct;
+        sumSubsidy += s.totalSubsidy;
+        sumNet += s.netIncome;
+        if (t.settlementStatus === 'paid') {
+          sumPaid += s.netIncome;
+        } else {
+          sumUnpaid += s.netIncome;
+        }
+      });
+
+      var isExpanded = appState.expandedMonth === ym;
+      var netCls = sumNet < 0 ? 'negative' : 'positive';
+      var paidCls = sumPaid < 0 ? 'negative' : 'positive';
+      var unpaidCls = sumUnpaid < 0 ? 'negative' : 'positive';
+
+      html += '<div class="month-card ' + (isExpanded ? 'expanded' : '') + '">' +
+        '<div class="month-card-header" onclick="window.toggleMonth(\'' + ym + '\')">' +
+        '<div class="month-title">' + ym.replace('-', '年') + '月</div>' +
+        '<div class="month-summary">' +
+        '<span>完成 <span class="m-num">' + tasks.length + '</span> 趟</span>' +
+        '<span>净收入 <span class="m-num" style="color:' + (sumNet < 0 ? '#f53f3f' : '#00b42a') + '">' + (sumNet < 0 ? '-' : '') + '¥' + Math.abs(sumNet).toLocaleString() + '</span></span>' +
+        '<span style="color:#86909c">' + (isExpanded ? '收起 ▲' : '展开 ▼') + '</span>' +
+        '</div>' +
+        '</div>' +
+        '<div class="month-card-body">' +
+        '<div class="month-stats">' +
+        '<div class="ms-item"><div class="ms-label">完成趟数</div><div class="ms-value">' + tasks.length + ' 趟</div></div>' +
+        '<div class="ms-item"><div class="ms-label">运费合计</div><div class="ms-value">¥' + sumFreight.toLocaleString() + '</div></div>' +
+        '<div class="ms-item"><div class="ms-label">收入合计（含加急）</div><div class="ms-value positive">¥' + sumIncome.toLocaleString() + '</div></div>' +
+        '<div class="ms-item"><div class="ms-label">支出合计</div><div class="ms-value negative">¥' + sumCost.toLocaleString() + '</div></div>' +
+        '<div class="ms-item"><div class="ms-label">异常扣补款</div><div class="ms-value ' + ((sumSubsidy - sumDeduct) < 0 ? 'negative' : 'positive') + '">' + ((sumSubsidy - sumDeduct) >= 0 ? '+' : '') + '¥' + (sumSubsidy - sumDeduct).toLocaleString() + '</div></div>' +
+        '<div class="ms-item"><div class="ms-label">本月净收入</div><div class="ms-value ' + netCls + '">' + (sumNet < 0 ? '-' : '') + '¥' + Math.abs(sumNet).toLocaleString() + '</div></div>' +
+        '<div class="ms-item"><div class="ms-label">已到账金额</div><div class="ms-value ' + paidCls + '">' + (sumPaid < 0 ? '-' : '') + '¥' + Math.abs(sumPaid).toLocaleString() + '</div></div>' +
+        '<div class="ms-item"><div class="ms-label">未到账金额</div><div class="ms-value ' + unpaidCls + '">' + (sumUnpaid < 0 ? '-' : '') + '¥' + Math.abs(sumUnpaid).toLocaleString() + '</div></div>' +
+        '</div>';
+
+      tasks.forEach(function (t) {
+        var s = t.settlement || calculateSettlement(t.id);
+        var settleInfo = getSettlementStatusInfo(t.settlementStatus);
+        var tNet = s.netIncome;
+        html += '<div class="month-task-row" onclick="document.getElementById(\'closeIncomeModal\').click();window.viewIncome(\'' + t.id + '\')">' +
+          '<div class="month-task-info">' +
+          '<div class="month-task-no">' + t.id + (t.urgent ? ' <span class="badge urgent" style="font-size:10px;padding:1px 5px">加急</span>' : '') + '</div>' +
+          '<div class="month-task-route">' + t.startAddr.substring(0, 8) + ' → ' + t.endAddr.substring(0, 8) + '</div>' +
+          '</div>' +
+          '<div>' +
+          '<div class="month-task-amount" style="color:' + (tNet < 0 ? '#f53f3f' : '#00b42a') + '">' + (tNet < 0 ? '-' : '') + '¥' + Math.abs(tNet).toLocaleString() + '</div>' +
+          '<div class="month-task-status" style="color:' + (t.settlementStatus === 'paid' ? '#00b42a' : (t.settlementStatus === 'to_pay' ? '#1677ff' : '#ff9500')) + '">' + settleInfo.text + '</div>' +
+          '</div>' +
+          '</div>';
+      });
+
+      html += '</div></div>';
+    });
+
+    viewEl.innerHTML = html;
+  }
+
+  window.toggleMonth = function (ym) {
+    appState.expandedMonth = appState.expandedMonth === ym ? null : ym;
+    renderMonthlyView();
+  };
+
+  window.renderMonthlyView = renderMonthlyView;
 
   function renderMessages() {
     var listEl = document.getElementById('msgList');
